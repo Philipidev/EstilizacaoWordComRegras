@@ -18,10 +18,16 @@ public static class QuadroCaracteristicas
             var firstRow = t.FirstRowText ?? string.Empty;
             if (aliases.Any(a => firstRow.Contains(a, StringComparison.OrdinalIgnoreCase)))
                 return t;
-            // fallback: any cell text contains alias
+        }
+
+        // Fallback: documents may place the title outside the first row, but this
+        // should only run after titled tables had a chance to match.
+        foreach (var t in doc.Tables)
+        {
             if (aliases.Any(a => t.Cells.Any(c => c.Text.Contains(a, StringComparison.OrdinalIgnoreCase))))
                 return t;
         }
+
         return null;
     }
 

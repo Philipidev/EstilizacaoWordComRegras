@@ -54,7 +54,7 @@ tests/
   Core.Tests/
     Checks/             ChecklistEngineTests (4 testes)
   Infrastructure.Tests/
-    Checks/             IniciaisDistintasCheckTests (3 testes)
+    Checks/             IniciaisDistintasCheckTests (3 testes), RealDocumentCheckTests (1 teste)
     Excel/              ExcelChecklistRepositoryTests (1 teste)
 templates/
   checklists/           CL-001-CL00100.xlsx  ← checklist real (86 linhas)
@@ -79,7 +79,7 @@ dotnet build EstilizacaoWordComRegras.sln
 dotnet test  EstilizacaoWordComRegras.sln
 ```
 
-Resultado esperado: **8 testes, todos passando**.
+Resultado esperado: **9 testes, todos passando**.
 
 ---
 
@@ -134,7 +134,7 @@ dotnet run --project src/Cli -- dump-checklist --checklist outro.xlsx
     "iniciais.rotuloElaborador": "Elaborado por|Emissor|Elaborador",
     "iniciais.rotuloVerificador": "Verificado por|Verificador|Verificador Técnico",
     "iniciais.rotuloAprovador": "Aprovado por|Aprovador",
-    "codificacao.pdaRegex": "^[A-Z]{2}\\d{3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
+    "codificacao.pdaRegex": "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
     "codificacao.clienteRegex": "^[A-Z0-9]{2,4}-[A-Z]{2,4}-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
     "codificacao.aliasesRotulo": "Codificação PdA|Codificação|Código do Documento|Documento|Código"
   }
@@ -217,15 +217,15 @@ Todos mapeiam entradas do CL-001 com `IA=Sim`. Refs no formato `PS:Item:Padrao`.
 
 ---
 
-## Problemas conhecidos / calibração pendente
+## Calibração do documento de referência
 
 ### `IniciaisDistintasCheck` — documento `RN799RL6496600.docx`
 
-No documento de teste real, "Emissor" e "Verificador" são **cabeçalhos de coluna** no histórico de revisões dentro da tabela "Características do Documento", não rótulos de linha. Existe um fallback `FieldsByColumn` em `QuadroCaracteristicas` que deve detectar esse layout, mas ainda retorna `Warning` para esse documento. **Investigar:** talvez o índice de coluna não bata por células mescladas; verificar com dump de `ExtractedTableCell` para `table[16]`.
+No documento de teste real, "Emissor" e "Verificador" são **cabeçalhos de coluna** no histórico de revisões dentro da tabela "Características do Documento", não rótulos de linha. O fallback `FieldsByColumn` em `QuadroCaracteristicas` cobre esse layout e o documento passa no teste de regressão `RealDocumentCheckTests`.
 
 ### `CodificacaoTecnicaCheck` — nome do arquivo
 
-O arquivo `RN799RL6496600.docx` tem nome em código Meridian (não PdA). O check emite `Warning` (não `Error`) para o nome do arquivo — comportamento esperado, pois a codificação PdA correta (`RN799-PDA-26-04-022-RT`) está dentro do documento. O campo "Codificação PdA" no quadro Características também não está sendo encontrado ainda — ajustar `codificacao.aliasesRotulo` no perfil.
+O arquivo `RN799RL6496600.docx` tem nome em código magnético sem separadores, equivalente ao código `RN-799-RL-64966-00` do quadro. A codificação PdA correta (`QC5-PDA-26-04-022-RT`, com sufixo de revisão no documento) também é localizada no quadro "Características do Documento".
 
 ---
 
