@@ -1,8 +1,8 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using WordComplianceValidator.Core.Abstractions;
 using WordComplianceValidator.Core.Models;
-using WordComplianceValidator.Core.Rules;
 
 namespace WordComplianceValidator.Infrastructure.OpenXml;
 

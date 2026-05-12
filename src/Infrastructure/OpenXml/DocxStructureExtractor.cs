@@ -1,7 +1,8 @@
+using DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using WordComplianceValidator.Core.Abstractions;
 using WordComplianceValidator.Core.Models;
-using WordComplianceValidator.Core.Rules;
 
 namespace WordComplianceValidator.Infrastructure.OpenXml;
 
@@ -10,33 +11,36 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
     public DocumentStructure ExtractFromFile(string path)
     {
         using var fs = File.OpenRead(path);
-        return Extract(fs);
+        return Extract(fs, Path.GetFileName(path));
     }
 
-    public DocumentStructure Extract(Stream docxStream)
+    public DocumentStructure Extract(Stream docxStream, string? fileName = null)
     {
         using var doc = WordprocessingDocument.Open(docxStream, isEditable: false);
         var main = doc.MainDocumentPart
             ?? throw new InvalidOperationException("Documento .docx sem MainDocumentPart.");
 
         var styles = ExtractStyles(main);
-        var headers = ExtractHeaderFooter(main.HeaderParts.Select(h => (Part: (OpenXmlPart)h, h.Header.InnerText)), "default");
-        var footers = ExtractHeaderFooter(main.FooterParts.Select(f => (Part: (OpenXmlPart)f, f.Footer.InnerText)), "default");
+        var headers = ExtractHeaderFooter(main.HeaderParts.Select(h => (Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)h.Header, Text: h.Header.InnerText)), "default");
+        var footers = ExtractHeaderFooter(main.FooterParts.Select(f => (Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)f.Footer, Text: f.Footer.InnerText)), "default");
         var sections = ExtractSections(main);
         var paragraphs = ExtractParagraphs(main);
-        var tables = main.Document.Body?.Descendants<Table>().Count() ?? 0;
+        var tables = ExtractTables(main);
         var hasRevisions = HasPendingTrackChanges(main);
         var hasComments = HasOpenComments(main);
+        var tocUpdated = HasUpdatedToc(main);
 
         return new DocumentStructure(
+            FileName: fileName,
             Styles: styles,
             Headers: headers,
             Footers: footers,
             Sections: sections,
             Paragraphs: paragraphs,
-            TableCount: tables,
+            Tables: tables,
             HasPendingTrackChanges: hasRevisions,
-            HasOpenComments: hasComments);
+            HasOpenComments: hasComments,
+            HasUpdatedToc: tocUpdated);
     }
 
     private static IReadOnlyDictionary<string, ExtractedStyle> ExtractStyles(MainDocumentPart main)
@@ -74,13 +78,17 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
     }
 
     private static IReadOnlyList<ExtractedHeaderFooter> ExtractHeaderFooter(
-        IEnumerable<(OpenXmlPart Part, string InnerText)> parts,
+        IEnumerable<(DocumentFormat.OpenXml.OpenXmlPartRootElement Element, string Text)> parts,
         string kind)
     {
-        return parts
-            .Select(p => new ExtractedHeaderFooter(kind, (p.InnerText ?? string.Empty).Trim()))
-            .Where(h => !string.IsNullOrWhiteSpace(h.Text))
-            .ToList();
+        var list = new List<ExtractedHeaderFooter>();
+        foreach (var (element, text) in parts)
+        {
+            var images = element.Descendants<Drawing>().Count()
+                       + element.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
+            list.Add(new ExtractedHeaderFooter(kind, (text ?? string.Empty).Trim(), images));
+        }
+        return list;
     }
 
     private static IReadOnlyList<ExtractedSection> ExtractSections(MainDocumentPart main)
@@ -127,6 +135,36 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         return list;
     }
 
+    private static IReadOnlyList<ExtractedTable> ExtractTables(MainDocumentPart main)
+    {
+        var body = main.Document.Body;
+        if (body is null) return Array.Empty<ExtractedTable>();
+        var list = new List<ExtractedTable>();
+        int idx = 0;
+        foreach (var t in body.Descendants<Table>())
+        {
+            var cells = new List<ExtractedTableCell>();
+            int rowIdx = 0;
+            string? firstRowText = null;
+            foreach (var row in t.Elements<TableRow>())
+            {
+                int colIdx = 0;
+                var rowTexts = new List<string>();
+                foreach (var cell in row.Elements<TableCell>())
+                {
+                    var text = (cell.InnerText ?? string.Empty).Trim();
+                    cells.Add(new ExtractedTableCell(rowIdx, colIdx, text));
+                    rowTexts.Add(text);
+                    colIdx++;
+                }
+                if (rowIdx == 0) firstRowText = string.Join(" | ", rowTexts);
+                rowIdx++;
+            }
+            list.Add(new ExtractedTable(idx++, cells, firstRowText));
+        }
+        return list;
+    }
+
     private static bool HasPendingTrackChanges(MainDocumentPart main)
     {
         var body = main.Document.Body;
@@ -142,5 +180,18 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         var commentsPart = main.WordprocessingCommentsPart;
         if (commentsPart?.Comments is null) return false;
         return commentsPart.Comments.Elements<Comment>().Any();
+    }
+
+    private static bool HasUpdatedToc(MainDocumentPart main)
+    {
+        // TOC heuristic: SDT block containing a "TOC" docPartGallery or paragraphs with "tocXX" style.
+        var body = main.Document.Body;
+        if (body is null) return false;
+        if (body.Descendants<SdtBlock>().Any(s => s.InnerText.Contains("Sumário", StringComparison.OrdinalIgnoreCase)
+                                              || s.InnerText.Contains("Índice", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        return body.Descendants<Paragraph>()
+            .Any(p => (p.ParagraphProperties?.ParagraphStyleId?.Val?.Value ?? "")
+                .StartsWith("toc", StringComparison.OrdinalIgnoreCase));
     }
 }

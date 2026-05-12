@@ -1,10 +1,13 @@
 using System.CommandLine;
 using Microsoft.Extensions.Configuration;
 using WordComplianceValidator.Application.Services;
+using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
+using WordComplianceValidator.Infrastructure.Checks;
+using WordComplianceValidator.Infrastructure.Excel;
 using WordComplianceValidator.Infrastructure.OpenAI;
 using WordComplianceValidator.Infrastructure.OpenXml;
-using WordComplianceValidator.Infrastructure.Persistence;
+using WordComplianceValidator.Infrastructure.Profile;
 
 var config = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -15,72 +18,92 @@ var config = new ConfigurationBuilder()
 
 var openAi = new OpenAiSettings
 {
-    ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-             ?? config["OpenAI:ApiKey"] ?? string.Empty,
-    Model = config["OpenAI:Model"] ?? "gpt-4o-mini"
+    ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? config["OpenAI:ApiKey"] ?? string.Empty,
+    Model = config["OpenAI:Model"] ?? "gpt-5.4-mini"
 };
 
-var rulesRoot = config["Storage:RulesRoot"] ?? Path.Combine(Directory.GetCurrentDirectory(), "rules");
-
-// --- generate-rules ---
-var templateOpt = new Option<FileInfo>("--template", "Caminho do .docx modelo.") { IsRequired = true };
-var rulesFileOpt = new Option<FileInfo>("--rules", "Arquivo texto com as regras descritivas.") { IsRequired = true };
-var clientOpt = new Option<string>("--client", "Nome do cliente.") { IsRequired = true };
-var majorOpt = new Option<bool>("--major", description: "Bump major em vez de minor.", getDefaultValue: () => false);
-
-var generateCmd = new Command("generate-rules", "Gera/atualiza padrão JSON do cliente a partir de modelo + regras textuais.")
-{
-    templateOpt, rulesFileOpt, clientOpt, majorOpt
-};
-
-generateCmd.SetHandler(async (FileInfo template, FileInfo rules, string client, bool major) =>
-{
-    var extractor = new DocxStructureExtractor();
-    var parser = new OpenAiRuleParser(openAi);
-    var repo = new FileRuleSetRepository(rulesRoot);
-    var svc = new RuleGenerationService(extractor, parser, repo);
-
-    var rulesText = await File.ReadAllTextAsync(rules.FullName);
-    var (ruleSet, savedPath) = await svc.GenerateAsync(template.FullName, rulesText, client, major);
-    Console.WriteLine($"Padrão gerado: {savedPath}");
-    Console.WriteLine($"  cliente:        {ruleSet.Cliente}");
-    Console.WriteLine($"  versão:         {ruleSet.VersaoPadrao}");
-    Console.WriteLine($"  estilos:        {ruleSet.Styles.Count}");
-    Console.WriteLine($"  headers/footers:{ruleSet.Headers.Count}/{ruleSet.Footers.Count}");
-    Console.WriteLine($"  regras:         {ruleSet.Rules.Count}");
-}, templateOpt, rulesFileOpt, clientOpt, majorOpt);
-
-// --- validate ---
-var docOpt = new Option<FileInfo>("--doc", "Documento .docx a validar.") { IsRequired = true };
-var rulesJsonOpt = new Option<FileInfo>("--rules", "Arquivo JSON do padrão (gerado).") { IsRequired = true };
+var docOpt = new Option<FileInfo>("--doc", "Documento .docx a revisar.") { IsRequired = true };
+var checklistOpt = new Option<FileInfo>(
+    "--checklist",
+    description: "Caminho do checklist .xlsx (default: templates/checklists/CL-001-CL00100.xlsx).",
+    getDefaultValue: () => new FileInfo(Path.Combine(Directory.GetCurrentDirectory(), "templates", "checklists", "CL-001-CL00100.xlsx")));
+var profileOpt = new Option<FileInfo>("--profile", "Caminho do JSON de profile do cliente.") { IsRequired = true };
 var outOpt = new Option<FileInfo>("--out", "Caminho do .docx comentado de saída.") { IsRequired = true };
+var noLlmOpt = new Option<bool>("--no-llm", () => false, "Desabilita checks que usam LLM.");
+var verboseOpt = new Option<bool>("--verbose", () => false, "Inclui itens pulados no output.");
 
-var validateCmd = new Command("validate", "Valida um documento contra um padrão JSON, gerando .docx com comentários.")
+var reviewCmd = new Command("review", "Revisa um documento .docx contra o checklist CL-001.")
 {
-    docOpt, rulesJsonOpt, outOpt
+    docOpt, checklistOpt, profileOpt, outOpt, noLlmOpt, verboseOpt
 };
 
-validateCmd.SetHandler(async (FileInfo doc, FileInfo rulesJson, FileInfo outFile) =>
+reviewCmd.SetHandler(async (FileInfo doc, FileInfo checklist, FileInfo profile, FileInfo outFile, bool noLlm, bool verbose) =>
 {
     var extractor = new DocxStructureExtractor();
-    var repo = new FileRuleSetRepository(rulesRoot);
+    var checklistRepo = new ExcelChecklistRepository();
+    var profileRepo = new JsonClientProfileRepository();
     var inserter = new CommentInserter();
-    var svc = new ValidationService(extractor, repo, inserter);
 
-    var violations = await svc.ValidateAsync(doc.FullName, rulesJson.FullName, outFile.FullName);
-    Console.WriteLine($"Violações: {violations.Count}");
-    foreach (var v in violations)
+    var checks = new List<IRuleCheck>
     {
-        Console.WriteLine($"  [{v.Severity}] [{v.RuleId}] {v.Message}");
+        new LogomarcasNoHeaderCheck(),
+        new IniciaisDistintasCheck(),
+        new CodificacaoTecnicaCheck()
+    };
+
+    if (!noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey))
+    {
+        var semantic = new OpenAiSemanticChecker(openAi);
+        checks.Add(new FolhaRostoVsCaracteristicasCheck(semantic));
+        Console.WriteLine($"[info] LLM habilitado (modelo {openAi.Model}).");
     }
+    else
+    {
+        Console.WriteLine("[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm). Checks semânticos serão pulados.");
+    }
+
+    var engine = new ChecklistEngine(checks);
+    var svc = new DocumentReviewService(extractor, checklistRepo, profileRepo, engine, inserter);
+
+    var report = await svc.ReviewAsync(doc.FullName, checklist.FullName, profile.FullName, outFile.FullName);
+
+    Console.WriteLine();
+    Console.WriteLine($"Cliente: {report.Cliente}");
+    Console.WriteLine($"Total de itens do checklist: {report.Results.Count}");
+    Console.WriteLine($"  passou:    {report.Passed}");
+    Console.WriteLine($"  falhou:    {report.Failed}");
+    Console.WriteLine($"  pulado:    {report.Skipped}");
+    Console.WriteLine($"  erro:      {report.Errored}");
+    Console.WriteLine();
+
+    var toShow = verbose ? report.Results : report.Results.Where(r => r.Status is CheckStatus.Failed or CheckStatus.Error);
+    foreach (var r in toShow)
+    {
+        Console.WriteLine($"  [{r.Status}] {r.Ref}");
+        foreach (var v in r.Violations)
+            Console.WriteLine($"      → [{v.Severity}] {v.Message}");
+        if (!string.IsNullOrEmpty(r.Note))
+            Console.WriteLine($"      note: {r.Note}");
+    }
+
+    Console.WriteLine();
     Console.WriteLine($"Saída: {outFile.FullName}");
-    Environment.ExitCode = violations.Any(v => v.Severity == Severity.Error) ? 2 : 0;
-}, docOpt, rulesJsonOpt, outOpt);
+    Environment.ExitCode = report.Violations.Any(v => v.Severity == Severity.Error) ? 2 : 0;
+}, docOpt, checklistOpt, profileOpt, outOpt, noLlmOpt, verboseOpt);
 
-var root = new RootCommand("Word Compliance Validator CLI")
+// ---- checklist dump (debug) ----
+var dumpCmd = new Command("dump-checklist", "Lista entradas do checklist .xlsx.")
 {
-    generateCmd,
-    validateCmd
+    checklistOpt
 };
+dumpCmd.SetHandler(async (FileInfo checklist) =>
+{
+    var repo = new ExcelChecklistRepository();
+    var entries = await repo.LoadAsync(checklist.FullName);
+    Console.WriteLine($"Total: {entries.Count} entradas");
+    foreach (var e in entries)
+        Console.WriteLine($"  {e.Ref,-40} IA={(e.IaAutomatizavel ? "Sim" : "Não")}  {e.Titulo}");
+}, checklistOpt);
 
+var root = new RootCommand("Word Compliance Validator CLI") { reviewCmd, dumpCmd };
 return await root.InvokeAsync(args);

@@ -11,7 +11,8 @@ public sealed record ExtractedStyle(
 
 public sealed record ExtractedHeaderFooter(
     string Kind,
-    string Text);
+    string Text,
+    int ImageCount);
 
 public sealed record ExtractedSection(
     int Index,
@@ -27,12 +28,24 @@ public sealed record ExtractedParagraph(
     string? StyleId,
     string Text);
 
+public sealed record ExtractedTableCell(
+    int Row,
+    int Column,
+    string Text);
+
+public sealed record ExtractedTable(
+    int Index,
+    IReadOnlyList<ExtractedTableCell> Cells,
+    string? FirstRowText);
+
 public sealed record DocumentStructure(
+    string? FileName,
     IReadOnlyDictionary<string, ExtractedStyle> Styles,
     IReadOnlyList<ExtractedHeaderFooter> Headers,
     IReadOnlyList<ExtractedHeaderFooter> Footers,
     IReadOnlyList<ExtractedSection> Sections,
     IReadOnlyList<ExtractedParagraph> Paragraphs,
-    int TableCount,
+    IReadOnlyList<ExtractedTable> Tables,
     bool HasPendingTrackChanges,
-    bool HasOpenComments);
+    bool HasOpenComments,
+    bool HasUpdatedToc);
