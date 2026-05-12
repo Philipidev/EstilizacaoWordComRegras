@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A6CA8BDC-F9DF-454C-9EC0-FFA3D2026D7E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Core", "src\Core\WordComplianceValidator.Core.csproj", "{16E38AA6-201D-4CF9-AE99-7637AF7911BC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Infrastructure", "src\Infrastructure\WordComplianceValidator.Infrastructure.csproj", "{FB1B44E7-F64A-450F-B807-BEB57E061312}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Application", "src\Application\WordComplianceValidator.Application.csproj", "{F3127311-3627-4E56-BEEB-777E146A6B69}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Cli", "src\Cli\WordComplianceValidator.Cli.csproj", "{143939B0-F520-461D-9933-6172BE4B0604}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D3AD151D-8029-43D8-BEB7-2A71936CB6F9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Core.Tests", "tests\Core.Tests\WordComplianceValidator.Core.Tests.csproj", "{EFE5F1DE-FD43-4268-856D-C0233C168BE4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WordComplianceValidator.Infrastructure.Tests", "tests\Infrastructure.Tests\WordComplianceValidator.Infrastructure.Tests.csproj", "{C41E2125-E606-41B8-9D16-D3ED3CB33000}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{16E38AA6-201D-4CF9-AE99-7637AF7911BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16E38AA6-201D-4CF9-AE99-7637AF7911BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16E38AA6-201D-4CF9-AE99-7637AF7911BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16E38AA6-201D-4CF9-AE99-7637AF7911BC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB1B44E7-F64A-450F-B807-BEB57E061312}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB1B44E7-F64A-450F-B807-BEB57E061312}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB1B44E7-F64A-450F-B807-BEB57E061312}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB1B44E7-F64A-450F-B807-BEB57E061312}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3127311-3627-4E56-BEEB-777E146A6B69}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3127311-3627-4E56-BEEB-777E146A6B69}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3127311-3627-4E56-BEEB-777E146A6B69}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3127311-3627-4E56-BEEB-777E146A6B69}.Release|Any CPU.Build.0 = Release|Any CPU
+		{143939B0-F520-461D-9933-6172BE4B0604}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{143939B0-F520-461D-9933-6172BE4B0604}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{143939B0-F520-461D-9933-6172BE4B0604}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{143939B0-F520-461D-9933-6172BE4B0604}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EFE5F1DE-FD43-4268-856D-C0233C168BE4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFE5F1DE-FD43-4268-856D-C0233C168BE4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFE5F1DE-FD43-4268-856D-C0233C168BE4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFE5F1DE-FD43-4268-856D-C0233C168BE4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C41E2125-E606-41B8-9D16-D3ED3CB33000}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C41E2125-E606-41B8-9D16-D3ED3CB33000}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C41E2125-E606-41B8-9D16-D3ED3CB33000}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C41E2125-E606-41B8-9D16-D3ED3CB33000}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{16E38AA6-201D-4CF9-AE99-7637AF7911BC} = {A6CA8BDC-F9DF-454C-9EC0-FFA3D2026D7E}
+		{FB1B44E7-F64A-450F-B807-BEB57E061312} = {A6CA8BDC-F9DF-454C-9EC0-FFA3D2026D7E}
+		{F3127311-3627-4E56-BEEB-777E146A6B69} = {A6CA8BDC-F9DF-454C-9EC0-FFA3D2026D7E}
+		{143939B0-F520-461D-9933-6172BE4B0604} = {A6CA8BDC-F9DF-454C-9EC0-FFA3D2026D7E}
+		{EFE5F1DE-FD43-4268-856D-C0233C168BE4} = {D3AD151D-8029-43D8-BEB7-2A71936CB6F9}
+		{C41E2125-E606-41B8-9D16-D3ED3CB33000} = {D3AD151D-8029-43D8-BEB7-2A71936CB6F9}
+	EndGlobalSection
+EndGlobal
