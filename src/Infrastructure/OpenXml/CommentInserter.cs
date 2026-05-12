@@ -64,7 +64,29 @@ public sealed class CommentInserter : ICommentInserter
         }
 
         commentsPart.Comments.Save();
+        EnsureUpdateFieldsOnOpen(main);
         main.Document.Save();
+    }
+
+    /// <summary>
+    /// Marca o documento para recalcular todos os campos (TOC, PAGE, NUMPAGES, REF...)
+    /// na próxima vez que o usuário abrir o arquivo no Word. Importante porque a inserção
+    /// de comentários invalida páginas e referências.
+    /// </summary>
+    private static void EnsureUpdateFieldsOnOpen(MainDocumentPart main)
+    {
+        var settingsPart = main.DocumentSettingsPart ?? main.AddNewPart<DocumentSettingsPart>();
+        settingsPart.Settings ??= new Settings();
+        var existing = settingsPart.Settings.GetFirstChild<UpdateFieldsOnOpen>();
+        if (existing is null)
+        {
+            settingsPart.Settings.AppendChild(new UpdateFieldsOnOpen { Val = true });
+        }
+        else
+        {
+            existing.Val = true;
+        }
+        settingsPart.Settings.Save();
     }
 
     private static Paragraph? ResolveTarget(

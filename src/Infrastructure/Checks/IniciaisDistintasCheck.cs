@@ -5,12 +5,18 @@ using WordComplianceValidator.Core.Models;
 namespace WordComplianceValidator.Infrastructure.Checks;
 
 /// <summary>
-/// PS-002 4.3.3 (letra c) Cliente — Imparcialidade na verificação:
+/// PS-002 4.3.3 (letra c) — Imparcialidade na verificação:
 /// iniciais do elaborador e do verificador técnico devem ser distintas.
+/// Aplicável a ambos os padrões (PdA e Cliente); registre uma instância por padrão.
 /// </summary>
 public sealed class IniciaisDistintasCheck : IRuleCheck
 {
-    public ChecklistRef Ref { get; } = new("PS-002", "4.3.3 (letra c)", ChecklistPadrao.Cliente);
+    public IniciaisDistintasCheck(ChecklistPadrao padrao = ChecklistPadrao.Cliente)
+    {
+        Ref = new ChecklistRef("PS-002", "4.3.3 (letra c)", padrao);
+    }
+
+    public ChecklistRef Ref { get; }
 
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {

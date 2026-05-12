@@ -1,4 +1,5 @@
 using FluentAssertions;
+using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Core.Profile;
@@ -48,6 +49,28 @@ public class IniciaisDistintasCheckTests
             CtxWithCharacteristicsTable("João A. (JAS)", "João Outro (JAS)"));
         result.Status.Should().Be(CheckStatus.Failed);
         result.Violations.Should().Contain(v => v.Severity == Severity.Error);
+    }
+
+    [Fact]
+    public async Task Pda_variant_uses_pda_ref_and_fails_on_match()
+    {
+        var check = new IniciaisDistintasCheck(ChecklistPadrao.Pda);
+        check.Ref.Padrao.Should().Be(ChecklistPadrao.Pda);
+        check.Ref.Item.Should().Be("4.3.3 (letra c)");
+
+        var result = await check.RunAsync(
+            CtxWithCharacteristicsTable("João A. (JAS)", "Outro (JAS)"));
+        result.Status.Should().Be(CheckStatus.Failed);
+        result.Ref.Padrao.Should().Be(ChecklistPadrao.Pda);
+    }
+
+    [Fact]
+    public async Task Pda_variant_passes_when_initials_differ()
+    {
+        var check = new IniciaisDistintasCheck(ChecklistPadrao.Pda);
+        var result = await check.RunAsync(
+            CtxWithCharacteristicsTable("João A. (JAS)", "Maria B. (MBC)"));
+        result.Status.Should().Be(CheckStatus.Passed);
     }
 
     [Fact]

@@ -12,7 +12,12 @@ public sealed record ExtractedStyle(
 public sealed record ExtractedHeaderFooter(
     string Kind,
     string Text,
-    int ImageCount);
+    int ImageCount,
+    IReadOnlyList<string>? FieldCodes = null)
+{
+    public IReadOnlyList<string> FieldCodes { get; init; } =
+        FieldCodes ?? Array.Empty<string>();
+}
 
 public sealed record ExtractedSection(
     int Index,
@@ -26,7 +31,8 @@ public sealed record ExtractedSection(
 public sealed record ExtractedParagraph(
     string ParagraphId,
     string? StyleId,
-    string Text);
+    string Text,
+    bool EndsWithPageBreak = false);
 
 public sealed record ExtractedTableCell(
     int Row,
@@ -48,4 +54,9 @@ public sealed record DocumentStructure(
     IReadOnlyList<ExtractedTable> Tables,
     bool HasPendingTrackChanges,
     bool HasOpenComments,
-    bool HasUpdatedToc);
+    bool HasUpdatedToc,
+    IReadOnlyList<string>? BodyFieldCodes = null)
+{
+    public IReadOnlyList<string> BodyFieldCodes { get; init; } =
+        BodyFieldCodes ?? Array.Empty<string>();
+}

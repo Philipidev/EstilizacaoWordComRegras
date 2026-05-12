@@ -1,3 +1,4 @@
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -21,14 +22,28 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             ?? throw new InvalidOperationException("Documento .docx sem MainDocumentPart.");
 
         var styles = ExtractStyles(main);
-        var headers = ExtractHeaderFooter(main.HeaderParts.Select(h => (Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)h.Header, Text: h.Header.InnerText)), "default");
-        var footers = ExtractHeaderFooter(main.FooterParts.Select(f => (Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)f.Footer, Text: f.Footer.InnerText)), "default");
+        // Mapeia HeaderReference/FooterReference -> Type (default/first/even) por relId.
+        var headerKinds = ResolveHeaderFooterKinds<HeaderReference>(main);
+        var footerKinds = ResolveHeaderFooterKinds<FooterReference>(main);
+        var headers = ExtractHeaderFooter(
+            main.HeaderParts.Select(h => (
+                Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)h.Header,
+                Text: h.Header.InnerText,
+                Kind: headerKinds.GetValueOrDefault(main.GetIdOfPart(h), "default"))));
+        var footers = ExtractHeaderFooter(
+            main.FooterParts.Select(f => (
+                Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)f.Footer,
+                Text: f.Footer.InnerText,
+                Kind: footerKinds.GetValueOrDefault(main.GetIdOfPart(f), "default"))));
         var sections = ExtractSections(main);
         var paragraphs = ExtractParagraphs(main);
         var tables = ExtractTables(main);
         var hasRevisions = HasPendingTrackChanges(main);
         var hasComments = HasOpenComments(main);
         var tocUpdated = HasUpdatedToc(main);
+        var bodyFields = main.Document.Body is null
+            ? Array.Empty<string>()
+            : ExtractFieldCodes(main.Document.Body);
 
         return new DocumentStructure(
             FileName: fileName,
@@ -40,7 +55,8 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             Tables: tables,
             HasPendingTrackChanges: hasRevisions,
             HasOpenComments: hasComments,
-            HasUpdatedToc: tocUpdated);
+            HasUpdatedToc: tocUpdated,
+            BodyFieldCodes: bodyFields);
     }
 
     private static IReadOnlyDictionary<string, ExtractedStyle> ExtractStyles(MainDocumentPart main)
@@ -78,18 +94,93 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
     }
 
     private static IReadOnlyList<ExtractedHeaderFooter> ExtractHeaderFooter(
-        IEnumerable<(DocumentFormat.OpenXml.OpenXmlPartRootElement Element, string Text)> parts,
-        string kind)
+        IEnumerable<(DocumentFormat.OpenXml.OpenXmlPartRootElement Element, string Text, string Kind)> parts)
     {
         var list = new List<ExtractedHeaderFooter>();
-        foreach (var (element, text) in parts)
+        foreach (var (element, text, kind) in parts)
         {
             var images = element.Descendants<Drawing>().Count()
                        + element.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
-            list.Add(new ExtractedHeaderFooter(kind, (text ?? string.Empty).Trim(), images));
+            var fieldCodes = ExtractFieldCodes(element);
+            list.Add(new ExtractedHeaderFooter(kind, (text ?? string.Empty).Trim(), images, fieldCodes));
         }
         return list;
     }
+
+    /// <summary>
+    /// Mapeia o relId de cada HeaderReference/FooterReference para o seu tipo
+    /// (default/first/even) percorrendo as SectionProperties do documento.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ResolveHeaderFooterKinds<TRef>(MainDocumentPart main)
+        where TRef : OpenXmlElement
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var body = main.Document.Body;
+        if (body is null) return map;
+        foreach (var sectPr in body.Descendants<SectionProperties>())
+        {
+            foreach (var refEl in sectPr.Elements<TRef>())
+            {
+                string? relId = null;
+                string kind = "default";
+                if (refEl is HeaderReference hr)
+                {
+                    relId = hr.Id?.Value;
+                    kind = ResolveKind(hr.Type?.Value.ToString());
+                }
+                else if (refEl is FooterReference fr)
+                {
+                    relId = fr.Id?.Value;
+                    kind = ResolveKind(fr.Type?.Value.ToString());
+                }
+                if (!string.IsNullOrEmpty(relId) && !map.ContainsKey(relId))
+                    map[relId] = kind;
+            }
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Coleta nomes de campos OOXML (PAGE, NUMPAGES, TOC, REF etc.) presentes em
+    /// um SectionPartRootElement (header/footer ou body). Captura tanto SimpleField
+    /// (<c>w:fldSimple w:instr="PAGE"</c>) quanto a forma estendida com FieldCode.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractFieldCodes(DocumentFormat.OpenXml.OpenXmlElement element)
+    {
+        var codes = new List<string>();
+
+        foreach (var simple in element.Descendants<SimpleField>())
+        {
+            var instr = simple.Instruction?.Value;
+            var name = ExtractFieldName(instr);
+            if (!string.IsNullOrEmpty(name)) codes.Add(name);
+        }
+
+        foreach (var fc in element.Descendants<FieldCode>())
+        {
+            var name = ExtractFieldName(fc.Text);
+            if (!string.IsNullOrEmpty(name)) codes.Add(name);
+        }
+
+        return codes;
+    }
+
+    private static string? ExtractFieldName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.TrimStart();
+        // Field instructions começam com o nome do campo (ex.: "PAGE \\* MERGEFORMAT").
+        var space = trimmed.IndexOfAny(new[] { ' ', '\t' });
+        var name = space < 0 ? trimmed : trimmed[..space];
+        return name.Trim().ToUpperInvariant();
+    }
+
+    private static string ResolveKind(string? rawType) => (rawType ?? string.Empty).ToLowerInvariant() switch
+    {
+        "first" => "first",
+        "even" => "even",
+        _ => "default"
+    };
 
     private static IReadOnlyList<ExtractedSection> ExtractSections(MainDocumentPart main)
     {
@@ -129,7 +220,12 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         {
             var id = p.ParagraphId?.Value ?? $"p{i:0000}";
             var styleId = p.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
-            list.Add(new ExtractedParagraph(id, styleId, p.InnerText ?? string.Empty));
+            // Page break: <w:br w:type="page"/> dentro do parágrafo (run-level)
+            // ou no ParagraphProperties (page break before).
+            var hasPageBreak = p.Descendants<Break>().Any(b =>
+                                    b.Type?.Value == BreakValues.Page)
+                            || (p.ParagraphProperties?.PageBreakBefore is not null);
+            list.Add(new ExtractedParagraph(id, styleId, p.InnerText ?? string.Empty, hasPageBreak));
             i++;
         }
         return list;

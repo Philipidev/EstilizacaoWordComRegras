@@ -47,14 +47,35 @@ reviewCmd.SetHandler(async (FileInfo doc, FileInfo checklist, FileInfo profile, 
     var checks = new List<IRuleCheck>
     {
         new LogomarcasNoHeaderCheck(),
-        new IniciaisDistintasCheck(),
-        new CodificacaoTecnicaCheck()
+        new IniciaisDistintasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
+        new IniciaisDistintasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
+        new CodificacaoTecnicaCheck(),
+        new QuadroCaracteristicasPreenchidoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.7"),
+        new QuadroCaracteristicasPreenchidoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra e)"),
+        new ConsistenciaIniciaisCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
+        new ConsistenciaIniciaisCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
+        new IndiceAtualizadoCheck(),
+        new PaginacaoAtualizadaCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra f)"),
+        new PaginacaoAtualizadaCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.6.6"),
+        new LocalizacaoCodificacaoCheck(),
+        new CodificacaoClienteCheck(),
+        new EvolucaoDocumentoCheck(),
+        new CabecalhosPadronizadosCheck(),
+        new ReferenciasCruzadasCheck(),
+        new CoerenciaRevisoesCheck(),
+        new ContinuidadeTituloConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
+        new ContinuidadeTituloConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
+        new FolhaRostoCheck()
     };
 
     if (!noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey))
     {
         var semantic = new OpenAiSemanticChecker(openAi);
         checks.Add(new FolhaRostoVsCaracteristicasCheck(semantic));
+        // Substitui os checks que aceitam ISemanticChecker pelos com fallback LLM.
+        checks.RemoveAll(c => c is FolhaRostoCheck or CabecalhosPadronizadosCheck);
+        checks.Add(new FolhaRostoCheck(semantic));
+        checks.Add(new CabecalhosPadronizadosCheck(semantic));
         Console.WriteLine($"[info] LLM habilitado (modelo {openAi.Model}).");
     }
     else
