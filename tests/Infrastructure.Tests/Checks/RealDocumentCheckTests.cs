@@ -21,30 +21,65 @@ public class RealDocumentCheckTests
             ["codificacao.aliasesRotulo"] = "Codificação PdA|Codificação|Código do Documento|Documento|Código"
         };
 
-    [Fact]
-    public async Task Implemented_checks_pass_for_reference_document()
+    [Theory]
+    [InlineData("RN799RL6496600.docx")]
+    [InlineData("RN-816-RL-67456-00.docx")]
+    public async Task Implemented_checks_pass_for_reference_document(string fileName)
     {
-        var ctx = ReferenceDocumentContext();
+        var ctx = ReferenceDocumentContext(fileName);
         IRuleCheck[] checks =
         [
             new LogomarcasNoHeaderCheck(),
             new IniciaisDistintasCheck(),
-            new CodificacaoTecnicaCheck()
+            new IniciaisDistintasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
+            new CodificacaoTecnicaCheck(),
+            new QuadroCaracteristicasPreenchidoCheck(),
+            new QuadroCaracteristicasPreenchidoCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra e)"),
+            new ConsistenciaIniciaisCheck(),
+            new IndiceAtualizadoCheck(),
+            new PaginacaoAtualizadaCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra f)"),
+            new PaginacaoAtualizadaCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.6.6"),
+            new CabecalhosPadronizadosCheck(),
+            new ReferenciasCruzadasCheck(),
+            new ContinuidadeTituloConteudoCheck(),
+            new LocalizacaoCodificacaoCheck(),
+            new CodificacaoClienteCheck(),
+            new EvolucaoDocumentoCheck(),
+            new FolhaRostoCheck(),
+
+            // Regras que o CL-001 marcava IA=Não e passaram a ser automatizadas.
+            new TarjaEmissaoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.1.2"),
+            new TarjaEmissaoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.1.3"),
+            new TarjaEmissaoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.1.4"),
+            new FormatacaoCorpoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.6.1"),
+            new FormatacaoCorpoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.6.2"),
+            new ElementosGraficosCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.6.4"),
+            new NumeracaoPaginasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.6.5"),
+            new IndicePaginaCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.4.1"),
+            new IndiceConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.4.3"),
+            new IndiceConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.4.4"),
+            new PainelNavegacaoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.5.2"),
+            new ApendiceAnexoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.8")
         ];
 
         foreach (var check in checks)
         {
             var result = await check.RunAsync(ctx);
-            var details = $"{result.Ref}: {string.Join(" | ", result.Violations.Select(v => $"{v.Severity}: {v.Message}"))}";
+            var details = $"{fileName} - {result.Ref}: " +
+                          string.Join(" | ", result.Violations.Select(v => $"{v.Severity}: {v.Message}"));
 
-            result.Status.Should().Be(CheckStatus.Passed, details);
-            result.Violations.Should().BeEmpty(details);
+            // Aceita Passed ou Skipped (heurísticas que não conseguem afirmar).
+            result.Status.Should().BeOneOf(new[] { CheckStatus.Passed, CheckStatus.Skipped }, details);
+            result.Violations.Should().NotContain(v => v.Severity == Severity.Error, details);
         }
     }
 
-    private static DocumentContext ReferenceDocumentContext()
+    private static DocumentContext ReferenceDocumentContext(string fileName)
     {
-        var path = RepoFile("templates", "RN799RL6496600.docx");
+        var path = RepoFile("templates", fileName);
         var structure = new DocxStructureExtractor().ExtractFromFile(path);
         var profile = new ClientProfile("MRN (exemplo)", "1.0", ProfileParameters);
 

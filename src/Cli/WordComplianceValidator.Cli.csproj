@@ -24,6 +24,12 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Não rastreado pelo git (.gitignore). Guarda a OPENAI_API_KEY local;
+         precisa ser copiado porque Program.cs lê de AppContext.BaseDirectory. -->
+    <None Update="appsettings.Development.json"
+          Condition="Exists('appsettings.Development.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

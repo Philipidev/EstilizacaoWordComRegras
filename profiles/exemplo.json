@@ -1,6 +1,6 @@
 {
   "cliente": "MRN (exemplo)",
-  "versao": "1.0",
+  "versao": "1.1",
   "parameters": {
     "logomarcas.minimo": "2",
     "quadroCaracteristicas.aliases": "Características do Documento|Características Técnicas|Quadro de Características|Características",
@@ -17,6 +17,34 @@
     "quadro.aliases.Aprovado por": "Aprovado por|Aprovador",
     "folhaRosto.paragrafosIniciais": "60",
     "folhaRosto.contratante": "",
-    "folhaRosto.titulo": ""
+    "folhaRosto.titulo": "",
+
+    "corpo.fonte": "Times New Roman",
+    "corpo.tamanho": "12",
+    "corpo.toleranciaPercentual": "10",
+
+    "elementosGraficos.toleranciaPercentual": "20",
+
+    "numeracao.exigirDireita": "false",
+
+    "tarja.comentariosCliente": "Emissão para Comentários do Cliente|Emissao para Comentarios do Cliente|Para Comentários do Cliente",
+    "tarja.naoValidoExecucao": "Não é Válido para Execução|Nao e Valido para Execucao|Não Válido para Execução",
+    "tarja.exigeNaoValidoExecucao": "false",
+
+    "painelNavegacao.comprimentoMaximoTitulo": "200",
+
+    "semantico.regrasHabilitadas": "PS-002:4.2:Cliente|PS-002:4.3.4.2:Pda|PS-002:4.3.4.5:Pda|PS-002:4.3.7:Pda|PS-002:4.3.7:Cliente|PS-002:4.3.9:Pda|PS-002:4.3.9:Cliente|PS-002:4.7:Pda|PS-002:4.3.3 (letra e):Pda|PS-002:4.3.3 (letra f):Pda|PS-002:4.3.3 (letra g):Pda|PS-002:4.3.3 (letra h):Pda|PS-002:4.3.3 (letra i):Pda|PS-018:4.3:Pda|PS-018:4.3.2 (letra a):Pda|PS-018:4.4:Pda|PS-018:4.4:Cliente|PS-018:4.7:Pda|PS-018:4.8:Pda|PS-018:4.9:Pda|PS-018:4.9:Cliente|PS-024:4.3:Pda|PS-024:4.3:Cliente",
+
+    "semantico.modelo.default": "gpt-5.6-sol",
+    "semantico.modelo.PS-002:4.3.4.2:Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-002:4.3.4.5:Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-002:4.3.3 (letra e):Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-002:4.3.3 (letra f):Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-002:4.3.3 (letra h):Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-018:4.3:Pda": "gpt-5.6-terra",
+    "semantico.modelo.PS-018:4.7:Pda": "gpt-5.6-terra",
+    "semantico.modelo.PS-018:4.8:Pda": "gpt-5.6-terra",
+    "semantico.modelo.PS-024:4.3:Pda": "gpt-5.6-luna",
+    "semantico.modelo.PS-024:4.3:Cliente": "gpt-5.6-luna"
   }
 }

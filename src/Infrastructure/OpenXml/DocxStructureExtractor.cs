@@ -22,21 +22,22 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             ?? throw new InvalidOperationException("Documento .docx sem MainDocumentPart.");
 
         var styles = ExtractStyles(main);
-        // Mapeia HeaderReference/FooterReference -> Type (default/first/even) por relId.
+        var resolver = new StyleResolver(main);
+        // Mapeia HeaderReference/FooterReference -> (tipo, seção) por relId.
         var headerKinds = ResolveHeaderFooterKinds<HeaderReference>(main);
         var footerKinds = ResolveHeaderFooterKinds<FooterReference>(main);
         var headers = ExtractHeaderFooter(
             main.HeaderParts.Select(h => (
                 Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)h.Header,
                 Text: h.Header.InnerText,
-                Kind: headerKinds.GetValueOrDefault(main.GetIdOfPart(h), "default"))));
+                Binding: headerKinds.GetValueOrDefault(main.GetIdOfPart(h), new HeaderFooterBinding("default", null)))));
         var footers = ExtractHeaderFooter(
             main.FooterParts.Select(f => (
                 Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)f.Footer,
                 Text: f.Footer.InnerText,
-                Kind: footerKinds.GetValueOrDefault(main.GetIdOfPart(f), "default"))));
+                Binding: footerKinds.GetValueOrDefault(main.GetIdOfPart(f), new HeaderFooterBinding("default", null)))));
         var sections = ExtractSections(main);
-        var paragraphs = ExtractParagraphs(main);
+        var paragraphs = ExtractParagraphs(main, resolver);
         var tables = ExtractTables(main);
         var hasRevisions = HasPendingTrackChanges(main);
         var hasComments = HasOpenComments(main);
@@ -44,6 +45,7 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         var bodyFields = main.Document.Body is null
             ? Array.Empty<string>()
             : ExtractFieldCodes(main.Document.Body);
+        var properties = ExtractDocumentProperties(doc);
 
         return new DocumentStructure(
             FileName: fileName,
@@ -56,7 +58,8 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             HasPendingTrackChanges: hasRevisions,
             HasOpenComments: hasComments,
             HasUpdatedToc: tocUpdated,
-            BodyFieldCodes: bodyFields);
+            BodyFieldCodes: bodyFields,
+            Properties: properties);
     }
 
     private static IReadOnlyDictionary<string, ExtractedStyle> ExtractStyles(MainDocumentPart main)
@@ -78,11 +81,22 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             double? size = ParseHalfPoints(rPr?.FontSize?.Val?.Value);
             bool? bold = rPr?.Bold is { } b ? (b.Val?.Value ?? true) : (bool?)null;
             bool? italic = rPr?.Italic is { } i ? (i.Val?.Value ?? true) : (bool?)null;
-            string? alignment = pPr?.Justification?.Val?.Value.ToString();
+            string? alignment = EnumText(pPr?.Justification?.Val);
 
             styles[id] = new ExtractedStyle(id, name, font, size, bold, italic, alignment);
         }
         return styles;
+    }
+
+    /// <summary>
+    /// Valor bruto de um atributo enumerado do OOXML ("center", "right", "first", "even"…).
+    /// A partir do SDK 3.x esses tipos são structs e <c>ToString()</c> devolve o nome do tipo
+    /// ("JustificationValues { }"), não o valor — por isso a leitura é sempre via InnerText.
+    /// </summary>
+    private static string? EnumText(OpenXmlSimpleType? value)
+    {
+        var raw = value?.InnerText;
+        return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim().ToLowerInvariant();
     }
 
     private static double? ParseHalfPoints(string? raw)
@@ -93,30 +107,133 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         return null;
     }
 
+    /// <summary>
+    /// Formatação efetiva de um estilo, já resolvida pela cadeia <c>w:basedOn</c> e pelos
+    /// <c>docDefaults</c>. É o que permite comparar "Times New Roman 12" com o que o
+    /// documento realmente aplica, e não apenas com o que a definição local do estilo diz.
+    /// </summary>
+    private sealed record StyleFormat(string? Font, double? Size, string? Alignment, int? OutlineLevel);
+
+    private sealed class StyleResolver
+    {
+        private readonly Dictionary<string, Style> _byId = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, StyleFormat> _cache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly StyleFormat _defaults;
+
+        public StyleResolver(MainDocumentPart main)
+        {
+            var stylesPart = main.StyleDefinitionsPart;
+            if (stylesPart?.Styles is not null)
+            {
+                foreach (var s in stylesPart.Styles.Elements<Style>())
+                {
+                    var id = s.StyleId?.Value;
+                    if (!string.IsNullOrEmpty(id)) _byId[id] = s;
+                }
+            }
+
+            var docDefaults = stylesPart?.Styles?.DocDefaults;
+            _defaults = new StyleFormat(
+                Font: docDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle?.RunFonts?.Ascii?.Value,
+                Size: ParseHalfPoints(docDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle?.FontSize?.Val?.Value),
+                Alignment: EnumText(docDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle?.Justification?.Val),
+                OutlineLevel: null);
+        }
+
+        public StyleFormat Defaults => _defaults;
+
+        public StyleFormat Resolve(string? styleId)
+        {
+            if (string.IsNullOrEmpty(styleId)) return _defaults;
+            if (_cache.TryGetValue(styleId, out var cached)) return cached;
+
+            // Guarda contra basedOn cíclico (documentos gerados por ferramentas de terceiros).
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var chain = new List<Style>();
+            var current = styleId;
+            while (!string.IsNullOrEmpty(current) && visited.Add(current) && _byId.TryGetValue(current, out var style))
+            {
+                chain.Add(style);
+                current = style.BasedOn?.Val?.Value;
+            }
+
+            // Do ancestral mais distante para o mais específico: o último a definir vence.
+            string? font = _defaults.Font;
+            double? size = _defaults.Size;
+            string? alignment = _defaults.Alignment;
+            int? outline = null;
+            for (var i = chain.Count - 1; i >= 0; i--)
+            {
+                var s = chain[i];
+                font = s.StyleRunProperties?.RunFonts?.Ascii?.Value ?? font;
+                size = ParseHalfPoints(s.StyleRunProperties?.FontSize?.Val?.Value) ?? size;
+                alignment = EnumText(s.StyleParagraphProperties?.Justification?.Val) ?? alignment;
+                outline = s.StyleParagraphProperties?.OutlineLevel?.Val?.Value ?? outline;
+            }
+
+            outline ??= InferOutlineFromName(styleId, chain.Count > 0 ? chain[0].StyleName?.Val?.Value : null);
+
+            var result = new StyleFormat(font, size, alignment, outline);
+            _cache[styleId] = result;
+            return result;
+        }
+
+        /// <summary>
+        /// Estilos de título nem sempre declaram <c>w:outlineLvl</c>. O nome canônico em
+        /// styles.xml é sempre inglês ("heading 1"), mas o styleId pode vir localizado
+        /// ("Ttulo1") em documentos criados no Word em PT-BR.
+        /// </summary>
+        private static int? InferOutlineFromName(string? styleId, string? styleName)
+        {
+            foreach (var candidate in new[] { styleName, styleId })
+            {
+                if (string.IsNullOrWhiteSpace(candidate)) continue;
+                var normalized = candidate.Trim().ToLowerInvariant().Replace(" ", "");
+                foreach (var prefix in new[] { "heading", "ttulo", "titulo", "título" })
+                {
+                    if (!normalized.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    var rest = normalized[prefix.Length..];
+                    if (int.TryParse(rest, out var level) && level is >= 1 and <= 9)
+                        return level - 1; // outlineLvl é 0-based: "heading 1" -> 0
+                }
+            }
+            return null;
+        }
+    }
+
+    private sealed record HeaderFooterBinding(string Kind, int? SectionIndex);
+
     private static IReadOnlyList<ExtractedHeaderFooter> ExtractHeaderFooter(
-        IEnumerable<(DocumentFormat.OpenXml.OpenXmlPartRootElement Element, string Text, string Kind)> parts)
+        IEnumerable<(DocumentFormat.OpenXml.OpenXmlPartRootElement Element, string Text, HeaderFooterBinding Binding)> parts)
     {
         var list = new List<ExtractedHeaderFooter>();
-        foreach (var (element, text, kind) in parts)
+        foreach (var (element, text, binding) in parts)
         {
             var images = element.Descendants<Drawing>().Count()
                        + element.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
             var fieldCodes = ExtractFieldCodes(element);
-            list.Add(new ExtractedHeaderFooter(kind, (text ?? string.Empty).Trim(), images, fieldCodes));
+            var alignments = element.Descendants<Paragraph>()
+                .Select(p => EnumText(p.ParagraphProperties?.Justification?.Val) ?? "left")
+                .ToList();
+            list.Add(new ExtractedHeaderFooter(
+                binding.Kind, (text ?? string.Empty).Trim(), images, fieldCodes,
+                alignments, binding.SectionIndex));
         }
         return list;
     }
 
     /// <summary>
     /// Mapeia o relId de cada HeaderReference/FooterReference para o seu tipo
-    /// (default/first/even) percorrendo as SectionProperties do documento.
+    /// (default/first/even) e o índice da seção que o referencia, percorrendo as
+    /// SectionProperties do documento na ordem em que aparecem.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> ResolveHeaderFooterKinds<TRef>(MainDocumentPart main)
+    private static IReadOnlyDictionary<string, HeaderFooterBinding> ResolveHeaderFooterKinds<TRef>(MainDocumentPart main)
         where TRef : OpenXmlElement
     {
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var map = new Dictionary<string, HeaderFooterBinding>(StringComparer.Ordinal);
         var body = main.Document.Body;
         if (body is null) return map;
+        var sectionIndex = 0;
         foreach (var sectPr in body.Descendants<SectionProperties>())
         {
             foreach (var refEl in sectPr.Elements<TRef>())
@@ -126,16 +243,17 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
                 if (refEl is HeaderReference hr)
                 {
                     relId = hr.Id?.Value;
-                    kind = ResolveKind(hr.Type?.Value.ToString());
+                    kind = ResolveKind(EnumText(hr.Type));
                 }
                 else if (refEl is FooterReference fr)
                 {
                     relId = fr.Id?.Value;
-                    kind = ResolveKind(fr.Type?.Value.ToString());
+                    kind = ResolveKind(EnumText(fr.Type));
                 }
                 if (!string.IsNullOrEmpty(relId) && !map.ContainsKey(relId))
-                    map[relId] = kind;
+                    map[relId] = new HeaderFooterBinding(kind, sectionIndex);
             }
+            sectionIndex++;
         }
         return map;
     }
@@ -210,25 +328,103 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         return double.TryParse(raw.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
     }
 
-    private static IReadOnlyList<ExtractedParagraph> ExtractParagraphs(MainDocumentPart main)
+    private static IReadOnlyList<ExtractedParagraph> ExtractParagraphs(MainDocumentPart main, StyleResolver resolver)
     {
         var body = main.Document.Body;
         if (body is null) return Array.Empty<ExtractedParagraph>();
         var list = new List<ExtractedParagraph>();
         int i = 0;
+        int sectionIndex = 0;
         foreach (var p in body.Descendants<Paragraph>())
         {
             var id = p.ParagraphId?.Value ?? $"p{i:0000}";
-            var styleId = p.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+            var pPr = p.ParagraphProperties;
+            var styleId = pPr?.ParagraphStyleId?.Val?.Value;
+            var styleFmt = resolver.Resolve(styleId);
+
             // Page break: <w:br w:type="page"/> dentro do parágrafo (run-level)
             // ou no ParagraphProperties (page break before).
             var hasPageBreak = p.Descendants<Break>().Any(b =>
                                     b.Type?.Value == BreakValues.Page)
-                            || (p.ParagraphProperties?.PageBreakBefore is not null);
-            list.Add(new ExtractedParagraph(id, styleId, p.InnerText ?? string.Empty, hasPageBreak));
+                            || (pPr?.PageBreakBefore is not null);
+
+            var alignment = EnumText(pPr?.Justification?.Val) ?? styleFmt.Alignment;
+            var outline = pPr?.OutlineLevel?.Val?.Value ?? styleFmt.OutlineLevel;
+            var numId = pPr?.NumberingProperties?.NumberingId?.Val?.Value;
+            var (font, size) = ResolveEffectiveRunFormat(p, styleFmt);
+            var images = p.Descendants<Drawing>().Count()
+                       + p.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
+            var inTable = p.Ancestors<TableCell>().Any();
+
+            list.Add(new ExtractedParagraph(
+                ParagraphId: id,
+                StyleId: styleId,
+                Text: p.InnerText ?? string.Empty,
+                EndsWithPageBreak: hasPageBreak,
+                Alignment: alignment,
+                OutlineLevel: outline,
+                NumberingId: numId,
+                EffectiveFont: font,
+                EffectiveFontSize: size,
+                ImageCount: images,
+                SectionIndex: sectionIndex,
+                IsInTable: inTable,
+                FieldCodes: ExtractFieldCodes(p)));
+
+            // Um sectPr dentro do pPr encerra a seção — o próximo parágrafo já é da seguinte.
+            if (pPr?.SectionProperties is not null) sectionIndex++;
             i++;
         }
         return list;
+    }
+
+    /// <summary>
+    /// Fonte e tamanho predominantes do parágrafo, ponderados pelo comprimento do texto de
+    /// cada run. A formatação direta do run tem precedência sobre o estilo — sem isso um
+    /// documento com estilo "Normal/Arial" mas runs marcados Times New Roman seria julgado
+    /// pelo estilo, e não pelo que o leitor vê.
+    /// </summary>
+    private static (string? Font, double? Size) ResolveEffectiveRunFormat(Paragraph p, StyleFormat styleFmt)
+    {
+        var fontWeights = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var sizeWeights = new Dictionary<double, int>();
+
+        foreach (var run in p.Elements<Run>())
+        {
+            var text = run.InnerText;
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var weight = text.Length;
+
+            var font = run.RunProperties?.RunFonts?.Ascii?.Value ?? styleFmt.Font;
+            if (!string.IsNullOrEmpty(font))
+                fontWeights[font] = fontWeights.GetValueOrDefault(font) + weight;
+
+            var size = ParseHalfPoints(run.RunProperties?.FontSize?.Val?.Value) ?? styleFmt.Size;
+            if (size is { } s)
+                sizeWeights[s] = sizeWeights.GetValueOrDefault(s) + weight;
+        }
+
+        var dominantFont = fontWeights.Count > 0
+            ? fontWeights.OrderByDescending(kv => kv.Value).First().Key
+            : styleFmt.Font;
+        var dominantSize = sizeWeights.Count > 0
+            ? sizeWeights.OrderByDescending(kv => kv.Value).First().Key
+            : styleFmt.Size;
+
+        return (dominantFont, dominantSize);
+    }
+
+    private static ExtractedDocumentProperties ExtractDocumentProperties(WordprocessingDocument doc)
+    {
+        var p = doc.PackageProperties;
+        return new ExtractedDocumentProperties(
+            Title: p.Title,
+            Subject: p.Subject,
+            Creator: p.Creator,
+            LastModifiedBy: p.LastModifiedBy,
+            Revision: p.Revision,
+            Created: p.Created,
+            Modified: p.Modified);
     }
 
     private static IReadOnlyList<ExtractedTable> ExtractTables(MainDocumentPart main)

@@ -71,6 +71,43 @@ public class ChecklistEngineTests
         results[0].Note.Should().Contain("boom");
     }
 
+    [Fact]
+    public async Task Registered_check_runs_even_when_checklist_says_ia_nao()
+    {
+        // A coluna IA? do CL-001 é conservadora: se o check existe, a regra é automatizável.
+        var check = new FakeCheck(new ChecklistRef("PS-024", "4.1.2", ChecklistPadrao.Cliente),
+                                  CheckStatus.Failed);
+        var engine = new ChecklistEngine(new[] { check });
+        var catalog = new[] { Entry("PS-024", "4.1.2", ChecklistPadrao.Cliente, iaAuto: false) };
+        var results = await engine.RunAsync(EmptyContext(), catalog);
+        results[0].Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task OnlyIaSim_mode_honors_the_checklist_column()
+    {
+        var check = new FakeCheck(new ChecklistRef("PS-024", "4.1.2", ChecklistPadrao.Cliente),
+                                  CheckStatus.Failed);
+        var engine = new ChecklistEngine(new[] { check }, honrarColunaIa: true);
+        var catalog = new[] { Entry("PS-024", "4.1.2", ChecklistPadrao.Cliente, iaAuto: false) };
+        var results = await engine.RunAsync(EmptyContext(), catalog);
+        results[0].Status.Should().Be(CheckStatus.Skipped);
+        results[0].Note.Should().Contain("--only-ia-sim");
+    }
+
+    [Fact]
+    public void Duplicate_ref_registration_fails_naming_both_checks()
+    {
+        var refId = new ChecklistRef("PS-002", "4.1", ChecklistPadrao.Cliente);
+        var act = () => new ChecklistEngine(new[]
+        {
+            new FakeCheck(refId, CheckStatus.Passed),
+            new FakeCheck(refId, CheckStatus.Failed)
+        });
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*PS-002:4.1:Cliente*FakeCheck*");
+    }
+
     private sealed class FakeCheck : IRuleCheck
     {
         private readonly CheckStatus _status;

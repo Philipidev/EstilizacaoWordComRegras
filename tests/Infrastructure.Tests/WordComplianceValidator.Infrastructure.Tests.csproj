@@ -27,6 +27,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Infrastructure\WordComplianceValidator.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Core\WordComplianceValidator.Core.csproj" />
+    <!-- O CLI entra como referência para que CliExitCodeTests possa executá-lo como processo.
+         O exit code só é observável no nível do processo: um teste unitário não pegaria o bug
+         em que Environment.ExitCode era sobrescrito pelo retorno de InvokeAsync. -->
+    <ProjectReference Include="..\..\src\Cli\WordComplianceValidator.Cli.csproj" />
   </ItemGroup>
 
 </Project>

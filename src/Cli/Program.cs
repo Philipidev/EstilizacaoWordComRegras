@@ -1,6 +1,8 @@
 using System.CommandLine;
+using System.CommandLine.Invocation;
 using Microsoft.Extensions.Configuration;
 using WordComplianceValidator.Application.Services;
+using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Infrastructure.Checks;
@@ -19,7 +21,7 @@ var config = new ConfigurationBuilder()
 var openAi = new OpenAiSettings
 {
     ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? config["OpenAI:ApiKey"] ?? string.Empty,
-    Model = config["OpenAI:Model"] ?? "gpt-5.4-mini"
+    Model = config["OpenAI:Model"] ?? "gpt-5.6-sol"
 };
 
 var docOpt = new Option<FileInfo>("--doc", "Documento .docx a revisar.") { IsRequired = true };
@@ -31,59 +33,54 @@ var profileOpt = new Option<FileInfo>("--profile", "Caminho do JSON de profile d
 var outOpt = new Option<FileInfo>("--out", "Caminho do .docx comentado de saída.") { IsRequired = true };
 var noLlmOpt = new Option<bool>("--no-llm", () => false, "Desabilita checks que usam LLM.");
 var verboseOpt = new Option<bool>("--verbose", () => false, "Inclui itens pulados no output.");
+var onlyIaSimOpt = new Option<bool>(
+    "--only-ia-sim", () => false,
+    "Executa apenas itens marcados IA=Sim no checklist (comportamento legado).");
 
 var reviewCmd = new Command("review", "Revisa um documento .docx contra o checklist CL-001.")
 {
-    docOpt, checklistOpt, profileOpt, outOpt, noLlmOpt, verboseOpt
+    docOpt, checklistOpt, profileOpt, outOpt, noLlmOpt, verboseOpt, onlyIaSimOpt
 };
 
-reviewCmd.SetHandler(async (FileInfo doc, FileInfo checklist, FileInfo profile, FileInfo outFile, bool noLlm, bool verbose) =>
+// O handler recebe o InvocationContext em vez das opções tipadas porque precisa definir
+// ctx.ExitCode: o top-level program termina com `return await root.InvokeAsync(args)`, e esse
+// retorno sobrescreve qualquer Environment.ExitCode — que era como o código de saída 2 se
+// perdia silenciosamente, fazendo um gate de CI aprovar documentos reprovados.
+reviewCmd.SetHandler(async (InvocationContext ctx) =>
 {
+    var parsed = ctx.ParseResult;
+    var doc = parsed.GetValueForOption(docOpt)!;
+    var checklist = parsed.GetValueForOption(checklistOpt)!;
+    var profile = parsed.GetValueForOption(profileOpt)!;
+    var outFile = parsed.GetValueForOption(outOpt)!;
+    var noLlm = parsed.GetValueForOption(noLlmOpt);
+    var verbose = parsed.GetValueForOption(verboseOpt);
+    var onlyIaSim = parsed.GetValueForOption(onlyIaSimOpt);
+
     var extractor = new DocxStructureExtractor();
     var checklistRepo = new ExcelChecklistRepository();
     var profileRepo = new JsonClientProfileRepository();
     var inserter = new CommentInserter();
 
-    var checks = new List<IRuleCheck>
-    {
-        new LogomarcasNoHeaderCheck(),
-        new IniciaisDistintasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
-        new IniciaisDistintasCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
-        new CodificacaoTecnicaCheck(),
-        new QuadroCaracteristicasPreenchidoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.7"),
-        new QuadroCaracteristicasPreenchidoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra e)"),
-        new ConsistenciaIniciaisCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
-        new ConsistenciaIniciaisCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
-        new IndiceAtualizadoCheck(),
-        new PaginacaoAtualizadaCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra f)"),
-        new PaginacaoAtualizadaCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.6.6"),
-        new LocalizacaoCodificacaoCheck(),
-        new CodificacaoClienteCheck(),
-        new EvolucaoDocumentoCheck(),
-        new CabecalhosPadronizadosCheck(),
-        new ReferenciasCruzadasCheck(),
-        new CoerenciaRevisoesCheck(),
-        new ContinuidadeTituloConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente),
-        new ContinuidadeTituloConteudoCheck(WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda),
-        new FolhaRostoCheck()
-    };
+    var usarLlm = !noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey);
+    var semantic = usarLlm ? new OpenAiSemanticChecker(openAi) : null;
 
-    if (!noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey))
+    var checks = CheckRegistry.Deterministicos(semantic);
+
+    // Fábrica consultada pelo engine para entradas do checklist sem check dedicado.
+    Func<ChecklistEntry, DocumentContext, IRuleCheck?>? semanticFallback = null;
+
+    if (semantic is not null)
     {
-        var semantic = new OpenAiSemanticChecker(openAi);
-        checks.Add(new FolhaRostoVsCaracteristicasCheck(semantic));
-        // Substitui os checks que aceitam ISemanticChecker pelos com fallback LLM.
-        checks.RemoveAll(c => c is FolhaRostoCheck or CabecalhosPadronizadosCheck);
-        checks.Add(new FolhaRostoCheck(semantic));
-        checks.Add(new CabecalhosPadronizadosCheck(semantic));
-        Console.WriteLine($"[info] LLM habilitado (modelo {openAi.Model}).");
+        semanticFallback = new SemanticCheckFactory(semantic).Create;
+        Console.WriteLine($"[info] LLM habilitado (modelo padrão {openAi.Model}).");
     }
     else
     {
         Console.WriteLine("[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm). Checks semânticos serão pulados.");
     }
 
-    var engine = new ChecklistEngine(checks);
+    var engine = new ChecklistEngine(checks, honrarColunaIa: onlyIaSim, fallback: semanticFallback);
     var svc = new DocumentReviewService(extractor, checklistRepo, profileRepo, engine, inserter);
 
     var report = await svc.ReviewAsync(doc.FullName, checklist.FullName, profile.FullName, outFile.FullName);
@@ -109,8 +106,8 @@ reviewCmd.SetHandler(async (FileInfo doc, FileInfo checklist, FileInfo profile, 
 
     Console.WriteLine();
     Console.WriteLine($"Saída: {outFile.FullName}");
-    Environment.ExitCode = report.Violations.Any(v => v.Severity == Severity.Error) ? 2 : 0;
-}, docOpt, checklistOpt, profileOpt, outOpt, noLlmOpt, verboseOpt);
+    ctx.ExitCode = report.Violations.Any(v => v.Severity == Severity.Error) ? 2 : 0;
+});
 
 // ---- checklist dump (debug) ----
 var dumpCmd = new Command("dump-checklist", "Lista entradas do checklist .xlsx.")
