@@ -36,10 +36,19 @@ public sealed class CommentInserter : ICommentInserter
             StringComparer.OrdinalIgnoreCase);
 
         var firstParagraph = paragraphs.FirstOrDefault();
+        var primeiroPorSecao = MapearPrimeiroParagrafoPorSecao(paragraphs);
 
-        foreach (var v in violations)
+        // Um mesmo fato costuma violar vários itens do checklist — o total de páginas fixo cai
+        // em três. O relatório precisa do veredito item a item, mas quem lê no Word não precisa
+        // do mesmo texto três vezes: aqui os idênticos viram um comentário só, citando todas as
+        // regras. A ordem original é preservada.
+        var agrupadas = violations
+            .GroupBy(v => (Mensagem: v.Message.Trim(), Alvo: ResolveTarget(v, paragraphsById, primeiroPorSecao, firstParagraph)))
+            .Select(g => (g.Key.Alvo, g.Key.Mensagem, Regras: g.Select(v => v.RuleId).Distinct().ToList()))
+            .ToList();
+
+        foreach (var (target, mensagem, regras) in agrupadas)
         {
-            var target = ResolveTarget(v, paragraphsById, firstParagraph);
             if (target is null) continue;
 
             var comment = new Comment
@@ -49,7 +58,8 @@ public sealed class CommentInserter : ICommentInserter
                 Initials = initials,
                 Date = DateTime.UtcNow
             };
-            comment.AppendChild(new Paragraph(new Run(new Text($"[{v.RuleId}] {v.Message}"))));
+            comment.AppendChild(new Paragraph(new Run(
+                new Text($"[{string.Join("; ", regras)}] {mensagem}"))));
             commentsPart.Comments.AppendChild(comment);
 
             var rangeStart = new CommentRangeStart { Id = commentId.ToString() };
@@ -92,10 +102,39 @@ public sealed class CommentInserter : ICommentInserter
     private static Paragraph? ResolveTarget(
         Violation v,
         IReadOnlyDictionary<string, Paragraph> byId,
+        IReadOnlyDictionary<int, Paragraph> primeiroPorSecao,
         Paragraph? fallback)
     {
         if (v.Location?.ParagraphId is { } pid && byId.TryGetValue(pid, out var byPid))
             return byPid;
+
+        // Achado de cabeçalho/rodapé não tem parágrafo de corpo correspondente — comentário do
+        // Word precisa de âncora no corpo. Ancorar na primeira folha da seção afetada não é
+        // exato, mas leva o leitor à região certa; o padrão anterior, o primeiro parágrafo do
+        // documento, empilhava todos esses achados na folha índice.
+        if (v.Location?.SectionIndex is { } secao && primeiroPorSecao.TryGetValue(secao, out var porSecao))
+            return porSecao;
+
         return fallback;
+    }
+
+    /// <summary>
+    /// Primeiro parágrafo de cada seção. A contagem espelha a do extrator: um <c>sectPr</c>
+    /// dentro do <c>pPr</c> encerra a seção, então o parágrafo seguinte já é da próxima.
+    /// </summary>
+    private static Dictionary<int, Paragraph> MapearPrimeiroParagrafoPorSecao(
+        IReadOnlyList<Paragraph> paragraphs)
+    {
+        var mapa = new Dictionary<int, Paragraph>();
+        var secao = 0;
+
+        foreach (var p in paragraphs)
+        {
+            if (!mapa.ContainsKey(secao) && !string.IsNullOrWhiteSpace(p.InnerText))
+                mapa[secao] = p;
+
+            if (p.ParagraphProperties?.SectionProperties is not null) secao++;
+        }
+        return mapa;
     }
 }

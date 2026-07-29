@@ -56,6 +56,10 @@ public sealed record ExtractedParagraph(
     int SectionIndex = 0,
     // true quando o parágrafo está dentro de uma célula de tabela.
     bool IsInTable = false,
+    // Índice da tabela (em <see cref="DocumentStructure.Tables"/>) que contém este parágrafo;
+    // null fora de tabela. Permite reconstituir as linhas/colunas de origem em vez de tratar
+    // cada célula como um parágrafo solto.
+    int? TableIndex = null,
     // Campos OOXML do parágrafo (PAGEREF, TOC, REF, SEQ…). Entradas de índice carregam
     // PAGEREF, o que as distingue de parágrafos de corpo com texto parecido.
     IReadOnlyList<string>? FieldCodes = null)
@@ -67,7 +71,11 @@ public sealed record ExtractedParagraph(
 public sealed record ExtractedTableCell(
     int Row,
     int Column,
-    string Text);
+    string Text,
+    // Imagens dentro da célula (Drawing + VML). Campos de formulário preenchidos por logo ou
+    // assinatura digitalizada têm texto vazio mas não estão em branco — sem esta contagem,
+    // "célula sem texto" e "campo não preenchido" viram a mesma coisa.
+    int ImageCount = 0);
 
 public sealed record ExtractedTable(
     int Index,

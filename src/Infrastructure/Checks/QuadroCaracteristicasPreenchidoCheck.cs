@@ -75,9 +75,52 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
                 Location: new ViolationLocation(null, null, null, "Quadro Características")));
         }
 
+        var (numeracao, notaNumeracao) = NumeracaoDaPaginaDoQuadro(ctx, table);
+        if (numeracao is not null) violations.Add(numeracao);
+
         var status = violations.Count == 0 ? CheckStatus.Passed : CheckStatus.Failed;
-        return Task.FromResult(new RuleCheckResult(Ref, status, violations));
+        return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: notaNumeracao));
     }
+
+    /// <summary>
+    /// Segunda exigência do item 4.7: a página do quadro não pode ser numerada. É decidível
+    /// pelo OOXML — basta olhar se a seção que contém o quadro tem campo PAGE/NUMPAGES no
+    /// cabeçalho ou rodapé — e por isso não deve ficar a cargo do avaliador semântico, que
+    /// confunde a grade de controle de folhas <em>dentro</em> do quadro com numeração
+    /// <em>da</em> página.
+    /// </summary>
+    private (Violation? Violacao, string Nota) NumeracaoDaPaginaDoQuadro(
+        DocumentContext ctx, ExtractedTable table)
+    {
+        var secao = ctx.Structure.Paragraphs
+            .Where(p => p.TableIndex == table.Index)
+            .Select(p => (int?)p.SectionIndex)
+            .FirstOrDefault();
+
+        if (secao is null)
+            return (null, "Seção do quadro não identificada; numeração da página não verificada.");
+
+        // SectionIndex de um header/footer é a primeira seção que o referencia. Se a seção do
+        // quadro reaproveitar um header de seção anterior, esta checagem se cala em vez de
+        // acusar — falso negativo é preferível a falso positivo numa regra de forma.
+        var numerados = ctx.Structure.Headers.Concat(ctx.Structure.Footers)
+            .Where(hf => hf.SectionIndex == secao && TemCampoPagina(hf))
+            .ToList();
+
+        if (numerados.Count == 0)
+            return (null, $"Página do quadro (seção {secao}) sem campo de numeração.");
+
+        return (new Violation(
+            RuleId: Ref.ToString(),
+            Severity: Severity.Error,
+            Message: "A página do quadro 'Características do Documento' contém numeração de páginas.",
+            Location: new ViolationLocation(null, numerados[0].Kind, secao, "Quadro Características")),
+            $"Página do quadro (seção {secao}) com campo de numeração em {numerados.Count} cabeçalho/rodapé.");
+    }
+
+    private static bool TemCampoPagina(ExtractedHeaderFooter hf) =>
+        hf.FieldCodes.Any(c => c.Equals("PAGE", StringComparison.OrdinalIgnoreCase)
+                            || c.Equals("NUMPAGES", StringComparison.OrdinalIgnoreCase));
 
     private static bool CampoPreenchido(
         ExtractedTable table,

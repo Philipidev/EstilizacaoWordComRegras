@@ -61,14 +61,33 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
 
         if (_item.StartsWith("4.1.2", StringComparison.Ordinal))
         {
+            var tarjas = DocumentoTexto.Lista(ctx.Profile.Get("tarja.comentariosCliente"), PadraoTarjaComentarios);
+
             if (!etapaComentarios)
             {
-                return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,
-                    Array.Empty<Violation>(),
-                    Note: $"Revisão '{revisao}' não é etapa 0A–0Z; regra não se aplica."));
+                // Fora de 0A–0Z a tarja de comentários não pode mais existir. É o outro lado
+                // da mesma regra, e o lado que de fato falha na prática: a tarja entra na 0A,
+                // fica num cabeçalho de seção e ninguém a remove ao emitir a 00. Verificar só
+                // a presença deixava passar — pior, o documento era lido como se ainda
+                // estivesse em 0A–0Z e a tarja obsoleta era aprovada.
+                var onde = LocalizarTarja(ctx, tarjas);
+                if (onde is null)
+                {
+                    return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,
+                        Array.Empty<Violation>(),
+                        Note: $"Revisão '{revisao}' não é etapa 0A–0Z e não há tarja de comentários."));
+                }
+
+                violations.Add(new Violation(Ref.ToString(), Severity.Error,
+                    $"Revisão '{revisao}' não está mais na etapa de comentários (0A–0Z), mas a tarja " +
+                    $"\"{onde.Value.Texto}\" permanece no documento ({onde.Value.Origem}). " +
+                    "Ela deveria ter sido removida na emissão desta revisão.",
+                    new ViolationLocation(null, onde.Value.Kind, onde.Value.Secao, "Tarja de emissão")));
+
+                return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Failed, violations,
+                    Note: $"Revisão '{revisao}' — tarja de etapa anterior remanescente."));
             }
 
-            var tarjas = DocumentoTexto.Lista(ctx.Profile.Get("tarja.comentariosCliente"), PadraoTarjaComentarios);
             if (!ContemAlguma(textoNorm, tarjas))
             {
                 violations.Add(new Violation(Ref.ToString(), Severity.Error,
@@ -115,6 +134,51 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
         return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: nota));
     }
 
+    /// <summary>
+    /// Onde a tarja aparece. Cabeçalhos e rodapés vêm primeiro porque é onde a tarja obsoleta
+    /// costuma sobreviver — e porque só ali dá para devolver seção e tipo, que é o que permite
+    /// ancorar o comentário perto do problema em vez de no início do documento.
+    /// </summary>
+    private static (string Texto, string Origem, string? Kind, int? Secao)? LocalizarTarja(
+        DocumentContext ctx, IReadOnlyList<string> tarjas)
+    {
+        foreach (var hf in ctx.Structure.Headers)
+        {
+            var achada = Casar(hf.Text, tarjas);
+            if (achada is not null)
+                return (achada, $"cabeçalho '{hf.Kind}' da seção {hf.SectionIndex + 1}", hf.Kind, hf.SectionIndex);
+        }
+        foreach (var hf in ctx.Structure.Footers)
+        {
+            var achada = Casar(hf.Text, tarjas);
+            if (achada is not null)
+                return (achada, $"rodapé '{hf.Kind}' da seção {hf.SectionIndex + 1}", hf.Kind, hf.SectionIndex);
+        }
+
+        // No corpo a tarja também aparece na descrição das revisões anteriores, que é registro
+        // histórico legítimo — por isso só o texto de fora do quadro conta.
+        foreach (var p in ctx.Structure.Paragraphs.Where(p => !p.IsInTable))
+        {
+            var achada = Casar(p.Text, tarjas);
+            if (achada is not null) return (achada, "corpo do documento", null, p.SectionIndex);
+        }
+
+        return null;
+    }
+
+    private static string? Casar(string? texto, IReadOnlyList<string> tarjas)
+    {
+        var norm = DocumentoTexto.Normalizar(texto);
+        if (norm.Length == 0) return null;
+
+        foreach (var t in tarjas)
+        {
+            var alvo = DocumentoTexto.Normalizar(t);
+            if (alvo.Length > 0 && norm.Contains(alvo, StringComparison.Ordinal)) return t;
+        }
+        return null;
+    }
+
     private static bool ContemAlguma(string textoNormalizado, IEnumerable<string> termos) =>
         termos.Select(DocumentoTexto.Normalizar)
               .Where(t => t.Length > 0)
@@ -128,6 +192,13 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
 
         var table = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
         if (table is null) return null;
+
+        // Fonte primária: a última entrada do histórico de revisões. As buscas por rótulo e
+        // por coluna abaixo continuam como fallback para quadros com layout diferente, mas
+        // não podem vir antes — a primeira linha rotulada "Rev." de um quadro no padrão MRN
+        // é o cabeçalho da grade de folhas, e ela devolve um código de coluna, não a revisão.
+        var vigente = QuadroCaracteristicas.RevisaoVigente(table);
+        if (!string.IsNullOrWhiteSpace(vigente)) return vigente;
 
         var byLabel = QuadroCaracteristicas.FieldsByLabel(table);
         var revisao = byLabel

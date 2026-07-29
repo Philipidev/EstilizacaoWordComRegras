@@ -37,7 +37,7 @@ Formato do `Ref`: `PS:Item:Padrão`.
 | [x] | `PS-002:4.3.3 (letra d):Cliente` | Consistência de iniciais entre registros | Sim | `ConsistenciaIniciaisCheck(Cliente)` |
 | [~] | `PS-002:4.3.3 (letra e):Pda` | Preenchimento de campos obrigatórios | — | motor semântico |
 | [x] | `PS-002:4.3.3 (letra e):Cliente` | Preenchimento de campos obrigatórios | Sim | `QuadroCaracteristicasPreenchidoCheck(item="4.3.3 (letra e)")` |
-| [~] | `PS-002:4.3.3 (letra f):Pda` | Paginação atualizada | — | motor semântico |
+| [x] | `PS-002:4.3.3 (letra f):Pda` | Paginação atualizada | — | `PaginacaoAtualizadaCheck(Pda, "4.3.3 (letra f)")` |
 | [x] | `PS-002:4.3.3 (letra f):Cliente` | Paginação atualizada | Sim | `PaginacaoAtualizadaCheck(item="4.3.3 (letra f)")` |
 | [~] | `PS-002:4.3.3 (letra g):Pda` | Padronização de cabeçalhos | — | motor semântico |
 | [x] | `PS-002:4.3.3 (letra g):Cliente` | Padronização de cabeçalhos | Sim | `CabecalhosPadronizadosCheck` |
@@ -65,7 +65,7 @@ Formato do `Ref`: `PS:Item:Padrão`.
 | [x] | `PS-002:4.3.8:Cliente` | Apêndice e anexo (Cliente) | Não | `ApendiceAnexoCheck(Cliente)` |
 | [~] | `PS-002:4.3.9:Pda` | DCE como apêndice/anexo | — | motor semântico (exige saber se é DCE) |
 | [~] | `PS-002:4.3.9:Cliente` | DCE como apêndice/anexo (Cliente) | Não | motor semântico |
-| [~] | `PS-002:4.7:Pda` | Quadro Características preenchido (PdA) | — | motor semântico |
+| [x] | `PS-002:4.7:Pda` | Quadro Características preenchido (PdA) | — | `QuadroCaracteristicasPreenchidoCheck(Pda, "4.7")` |
 | [x] | `PS-002:4.7:Cliente` | Quadro Características preenchido (Cliente) | Sim | `QuadroCaracteristicasPreenchidoCheck` |
 
 ## PS-005 — Controle de Qualidade dos Documentos Técnicos (rev. 38)
@@ -105,7 +105,7 @@ Formato do `Ref`: `PS:Item:Padrão`.
 
 | Status | Ref | Título | IA? | Implementação |
 |---|---|---|---|---|
-| [x] | `PS-024:4.1.2:Pda/Cliente` | Etapa para comentários e aprovação (0A–0Z) | — | `TarjaEmissaoCheck(item="4.1.2")` |
+| [x] | `PS-024:4.1.2:Pda/Cliente` | Etapa para comentários e aprovação (0A–0Z) | — | `TarjaEmissaoCheck(item="4.1.2")` ³ |
 | [x] | `PS-024:4.1.3:Pda/Cliente` | Emissão final (00) e revisões subsequentes | — | `TarjaEmissaoCheck(item="4.1.3")` ¹ |
 | [x] | `PS-024:4.1.4:Pda/Cliente` | Documentos traduzidos | — | `TarjaEmissaoCheck(item="4.1.4")` — registrado, mas retorna sempre `Skipped` ² |
 | [~] | `PS-024:4.3:Pda/Cliente` | Cancelamento de documentos | — | motor semântico (`gpt-5.6-luna`) |
@@ -118,6 +118,15 @@ e projeto básico — o tipo do projeto não é dedutível do `.docx`, então a 
 ("exige comparar com a versão em português, fora do `.docx`") em vez de cair no genérico
 "Revisão manual (IA=Não)". Ele nunca valida nada — a comparação exige a versão em português,
 que é externa ao arquivo.
+
+³ Cobre os dois sentidos da regra. Além de exigir a tarja quando a revisão está em 0A–0Z,
+acusa a tarja **remanescente** quando a revisão já saiu dessa etapa — que é o caso que falha
+na prática: a tarja entra na 0A, fica num cabeçalho de seção e ninguém a remove ao emitir a
+00. O `RN-816-RL-67456-00.docx` tem exatamente esse defeito (cabeçalho `first` da seção 6);
+enquanto a revisão vigente era lida do cabeçalho da grade de folhas (`0B` em vez de `00`), o
+check concluía que o documento ainda estava na etapa de comentários e **aprovava** a tarja
+obsoleta. A revisão vigente agora vem de `QuadroCaracteristicas.HistoricoDeRevisoes`, que
+localiza o histórico pelo cabeçalho com coluna de revisão *e* de data.
 
 ---
 
@@ -194,10 +203,19 @@ codificação/revisão, Sol para julgamento (ortografia, coerência, capa intern
 ### ⚠️ Limite de precisão do motor semântico
 
 Nem todo achado do LLM é correto. Na calibragem, `PS-002:4.7:Pda` acusou "numeração de
-páginas dentro do quadro Características" — o modelo leu a folha-índice (que lista página
-por revisão) como se fosse paginação do quadro. **Achados semânticos são ponto de partida
-para revisão humana, não veredito.** Sempre que uma regra tiver sinal determinístico, ela
-deve migrar de `[~]` para `[x]` com um `IRuleCheck` dedicado.
+páginas dentro do quadro Características" — o modelo leu a grade de controle de folhas (que
+lista página por revisão) como se fosse paginação do quadro. **Achados semânticos são ponto
+de partida para revisão humana, não veredito.** Sempre que uma regra tiver sinal
+determinístico, ela deve migrar de `[~]` para `[x]` com um `IRuleCheck` dedicado.
+
+Esse caso específico já migrou: `4.7:Pda` é determinístico e decide a ausência de numeração
+pela seção que contém o quadro. O mesmo aconteceu com `4.3.3 (letra f):Pda`, onde o modelo
+lia o valor cacheado do campo `PAGE` (`FL.: 7/99`, idêntico em toda parte de cabeçalho) como
+paginação repetida entre seções.
+
+Contrapartida da migração de `4.7:Pda`: `FieldsByLabel` casa o rótulo "Nome do Aprovador" com
+valor não vazio e dá o campo por preenchido, então a assinatura em branco não sai mais por
+esse item — ela continua saindo por `4.3.3 (letra e)`.
 
 O contrato tem três estados — `conforme` / `nao_aplicavel` / `nao_conforme` — e o prompt
 instrui a preferir `nao_aplicavel` na dúvida. Sem esse estado, os muitos itens condicionais

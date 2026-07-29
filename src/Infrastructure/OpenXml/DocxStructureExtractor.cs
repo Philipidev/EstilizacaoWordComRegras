@@ -1,3 +1,4 @@
+using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using DocumentFormat.OpenXml.Packaging;
@@ -29,12 +30,12 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         var headers = ExtractHeaderFooter(
             main.HeaderParts.Select(h => (
                 Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)h.Header,
-                Text: h.Header.InnerText,
+                Text: TextoComSeparadores(h.Header),
                 Binding: headerKinds.GetValueOrDefault(main.GetIdOfPart(h), new HeaderFooterBinding("default", null)))));
         var footers = ExtractHeaderFooter(
             main.FooterParts.Select(f => (
                 Element: (DocumentFormat.OpenXml.OpenXmlPartRootElement)f.Footer,
-                Text: f.Footer.InnerText,
+                Text: TextoComSeparadores(f.Footer),
                 Binding: footerKinds.GetValueOrDefault(main.GetIdOfPart(f), new HeaderFooterBinding("default", null)))));
         var sections = ExtractSections(main);
         var paragraphs = ExtractParagraphs(main, resolver);
@@ -335,6 +336,18 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
         var list = new List<ExtractedParagraph>();
         int i = 0;
         int sectionIndex = 0;
+
+        // Mesma enumeração usada por ExtractTables, então os índices coincidem. Serve para
+        // devolver o parágrafo à linha/coluna de origem: sem isso a folha índice chega ao
+        // avaliador como uma pilha de células soltas ("REV.", "0", "EMISSÃO", "B"), e a
+        // leitura natural vira um código "0/B" que o documento nunca teve.
+        // OpenXmlElement não sobrescreve Equals, então a chave é identidade de referência.
+        var indicePorTabela = new Dictionary<Table, int>();
+        {
+            int t = 0;
+            foreach (var tabela in body.Descendants<Table>()) indicePorTabela[tabela] = t++;
+        }
+
         foreach (var p in body.Descendants<Paragraph>())
         {
             var id = p.ParagraphId?.Value ?? $"p{i:0000}";
@@ -355,11 +368,18 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             var images = p.Descendants<Drawing>().Count()
                        + p.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
             var inTable = p.Ancestors<TableCell>().Any();
+            // Ancestral mais próximo: em tabela aninhada vale a interna, que é a que
+            // ExtractTables também numera.
+            var tabelaDoParagrafo = p.Ancestors<Table>().FirstOrDefault();
+            var tableIndex = tabelaDoParagrafo is not null
+                          && indicePorTabela.TryGetValue(tabelaDoParagrafo, out var ti)
+                ? ti
+                : (int?)null;
 
             list.Add(new ExtractedParagraph(
                 ParagraphId: id,
                 StyleId: styleId,
-                Text: p.InnerText ?? string.Empty,
+                Text: TextoComSeparadores(p),
                 EndsWithPageBreak: hasPageBreak,
                 Alignment: alignment,
                 OutlineLevel: outline,
@@ -369,6 +389,7 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
                 ImageCount: images,
                 SectionIndex: sectionIndex,
                 IsInTable: inTable,
+                TableIndex: tableIndex,
                 FieldCodes: ExtractFieldCodes(p)));
 
             // Um sectPr dentro do pPr encerra a seção — o próximo parágrafo já é da seguinte.
@@ -376,6 +397,55 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             i++;
         }
         return list;
+    }
+
+    /// <summary>
+    /// Texto do elemento preservando os separadores que o <c>InnerText</c> descarta.
+    /// <para>
+    /// <c>InnerText</c> concatena apenas os nós <c>w:t</c>, então <c>w:tab</c> e <c>w:br</c>
+    /// somem e o que era separado na tela vira uma palavra só: uma entrada de índice
+    /// <c>'10.4' &lt;tab&gt; 'Avaliação…' &lt;tab&gt; &lt;PAGEREF→67&gt;</c> é lida como
+    /// "10.4Avaliação…67". Isso produzia acusações de falta de espaço e de "numeração colada
+    /// ao título" que não existem no documento.
+    /// </para>
+    /// O separador emitido é whitespace, que <c>DocumentoTexto.Normalizar</c> colapsa — as
+    /// comparações normalizadas dos demais checks continuam valendo, apenas ganham a
+    /// fronteira de palavra que faltava.
+    /// </summary>
+    private static string TextoComSeparadores(OpenXmlElement element)
+    {
+        // Numa célula ou num cabeçalho, cada parágrafo é uma linha na tela. Concatenar sem
+        // separador cola a última palavra de um na primeira do seguinte — a célula de título
+        // da folha de rosto virava "BARRAGEM A1ENGENHARIA", uma aglutinação que o documento
+        // não tem e que o avaliador reportava como erro de redação.
+        if (element is not Paragraph)
+        {
+            var paragrafos = element.Descendants<Paragraph>().ToList();
+            if (paragrafos.Count > 0)
+                return string.Join("\n", paragrafos.Select(TextoPlano));
+        }
+        return TextoPlano(element);
+    }
+
+    private static string TextoPlano(OpenXmlElement element)
+    {
+        var sb = new StringBuilder();
+        foreach (var node in element.Descendants())
+        {
+            switch (node)
+            {
+                case Text t:
+                    sb.Append(t.Text);
+                    break;
+                case TabChar:
+                    sb.Append('\t');
+                    break;
+                case Break:
+                    sb.Append('\n');
+                    break;
+            }
+        }
+        return sb.ToString();
     }
 
     /// <summary>
@@ -444,8 +514,10 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
                 var rowTexts = new List<string>();
                 foreach (var cell in row.Elements<TableCell>())
                 {
-                    var text = (cell.InnerText ?? string.Empty).Trim();
-                    cells.Add(new ExtractedTableCell(rowIdx, colIdx, text));
+                    var text = TextoComSeparadores(cell).Trim();
+                    var cellImages = cell.Descendants<Drawing>().Count()
+                                   + cell.Descendants<DocumentFormat.OpenXml.Vml.ImageData>().Count();
+                    cells.Add(new ExtractedTableCell(rowIdx, colIdx, text, cellImages));
                     rowTexts.Add(text);
                     colIdx++;
                 }

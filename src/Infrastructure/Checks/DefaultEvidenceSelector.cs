@@ -18,7 +18,9 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 public sealed class DefaultEvidenceSelector : IEvidenceSelector
 {
     private const int OrcamentoCaracteresDefault = 24_000;
-    private const int ParagrafosFolhaRosto = 60;
+    // Vale só para os parágrafos fora de tabela da capa; as tabelas têm o teto próprio abaixo.
+    private const int ParagrafosFolhaRosto = 120;
+    private const int OrcamentoFolhaRosto = 6_000;
 
     private readonly int _orcamento;
 
@@ -65,17 +67,197 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
 
     private static void AppendFolhaRosto(StringBuilder sb, DocumentStructure doc)
     {
-        var folha = doc.Paragraphs
-            .TakeWhile(p => p.OutlineLevel is not 0)
-            .Take(ParagrafosFolhaRosto)
-            .Where(p => !string.IsNullOrWhiteSpace(p.Text))
-            .Select(p => p.Text.Trim())
+        // O corte por número de parágrafos vale só para o texto solto. Contar células de
+        // tabela junto esgotava a cota antes de chegar à folha de rosto: a folha índice do
+        // cliente sozinha ocupa ~200 parágrafos de célula, e a folha de rosto — onde estão
+        // código, título e cliente — vem depois dela. O avaliador então concluía, corretamente
+        // para o que recebia e erradamente para o documento, que esses campos não existiam.
+        var cabeca = doc.Paragraphs.TakeWhile(p => p.OutlineLevel is not 0).ToList();
+
+        if (cabeca.Count == 0) return;
+        sb.AppendLine("## Folha de rosto / capa (conteúdo anterior ao primeiro título)");
+
+        // As tabelas da capa saem linha a linha, com as colunas preservadas. Achatá-las em
+        // bullets soltos destrói a informação que mais importa aqui: a folha índice tem
+        // "REV." e "EMISSÃO" em colunas distintas, e lida como células soltas ela vira um
+        // código de revisão "0/B" inexistente — origem de acusações de divergência entre a
+        // capa e o quadro "Características" que o documento não tem.
+        // Teto próprio para a capa: sem título nenhum, TakeWhile devolve o documento inteiro,
+        // e a capa comeria o orçamento das demais seções da evidência.
+        var gasto = 0;
+        foreach (var idx in cabeca.Where(p => p.TableIndex is not null)
+                                  .Select(p => p.TableIndex!.Value)
+                                  .Distinct())
+        {
+            if (gasto >= OrcamentoFolhaRosto) break;
+            var tabela = doc.Tables.FirstOrDefault(t => t.Index == idx);
+            if (tabela is null) continue;
+
+            // A observação sobre o layout é descritiva, não uma instrução de julgamento: em
+            // formulário de capa o valor costuma vir na linha seguinte, na mesma coluna do
+            // rótulo ("Nº DOC. Nº PROJETISTA:" numa linha, o código na próxima), e sem isso
+            // o rótulo isolado é lido como campo em branco.
+            var titulo = $"### Tabela {idx} da capa (linha a linha, colunas separadas por |; " +
+                         "é um formulário: o valor de um rótulo pode estar na linha seguinte, " +
+                         "na mesma coluna)";
+            sb.AppendLine(titulo);
+            gasto += titulo.Length;
+            foreach (var linha in LinhasDaTabela(tabela))
+            {
+                if (gasto >= OrcamentoFolhaRosto) break;
+                sb.AppendLine($"- {linha}");
+                gasto += linha.Length;
+            }
+        }
+
+        var soltos = cabeca.Where(p => p.TableIndex is null)
+                           .Select(p => Conteudo(p.Text, p.ImageCount))
+                           .Where(t => t.Length > 0)
+                           .Take(ParagrafosFolhaRosto)
+                           .ToList();
+        if (soltos.Count > 0)
+        {
+            sb.AppendLine("### Parágrafos fora de tabela");
+            foreach (var t in soltos) sb.AppendLine($"- {t}");
+        }
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Linhas do quadro com as colunas preservadas, resumindo a grade de controle de folhas.
+    /// <para>
+    /// A projeção rótulo→valor achatava as duas colunas do quadro ("Pimenta de Ávila" e
+    /// "Cliente"), e o par <c>RN-816-RL-67456-00 | QD5-PDA-26-04-095-RT-1</c> era lido como um
+    /// único registro — daí a acusação de que a revisão PdA "-1" brigava com o histórico "00",
+    /// quando o "-1" é a revisão do Cliente e corresponde à revisão 1 da folha índice.
+    /// </para>
+    /// A grade de folhas é resumida porque ocupa a maior parte das linhas do quadro e não
+    /// carrega informação por linha — e porque, servida crua, era confundida com numeração
+    /// da página do quadro.
+    /// </summary>
+    private static IReadOnlyList<string> LinhasDoQuadro(ExtractedTable quadro, int maxLinhas = 40)
+    {
+        var saida = new List<string>();
+        var grade = new List<IReadOnlyList<ExtractedTableCell>>();
+
+        void FecharGrade()
+        {
+            if (grade.Count == 0) return;
+
+            var folhas = grade.SelectMany(l => l)
+                .Select(c => c.Text.Trim())
+                .Where(t => int.TryParse(t, out _))
+                .Select(int.Parse)
+                .ToList();
+            var marcas = grade.SelectMany(l => l)
+                .Count(c => c.Text.Trim().Equals("x", StringComparison.OrdinalIgnoreCase));
+            var faixa = folhas.Count > 0 ? $", folhas {folhas.Min()} a {folhas.Max()}" : string.Empty;
+
+            saida.Add($"[grade de controle de folhas: {grade.Count} linhas{faixa}, {marcas} marcações " +
+                      "\"x\" — indica quais folhas mudaram em cada revisão; não é a numeração da " +
+                      "página do quadro]");
+            grade.Clear();
+        }
+
+        // Cabeçalhos da grade ("Rev. | 0A | 0B | 00 …" e "Pag. | | | …") ficam pendentes até
+        // se saber se vem grade depois. Deixá-los soltos enquanto as linhas de dados são
+        // resumidas mostra um "Pag." seguido de células vazias, que o avaliador reportou como
+        // formulário não preenchido — sendo que os dados existem, no resumo logo abaixo.
+        var pendentes = new List<IReadOnlyList<ExtractedTableCell>>();
+
+        void EmitirPendentes()
+        {
+            foreach (var p in pendentes)
+                saida.Add(string.Join(" | ", p.Select(c => Conteudo(c.Text, c.ImageCount))));
+            pendentes.Clear();
+        }
+
+        foreach (var linha in quadro.Cells.GroupBy(c => c.Row).OrderBy(g => g.Key))
+        {
+            var celulas = linha.OrderBy(c => c.Column).ToList();
+
+            if (QuadroCaracteristicas.EhLinhaDeGradeDeFolhas(celulas))
+            {
+                grade.AddRange(pendentes);
+                pendentes.Clear();
+                grade.Add(celulas);
+                continue;
+            }
+
+            if (EhCabecalhoDeGrade(celulas)) { pendentes.Add(celulas); continue; }
+
+            FecharGrade();
+            EmitirPendentes();
+
+            var texto = string.Join(" | ", celulas.Select(c => Conteudo(c.Text, c.ImageCount)));
+            if (!texto.Any(char.IsLetterOrDigit)) continue;
+
+            if (saida.Count >= maxLinhas) { saida.Add("… (linhas restantes omitidas)"); return saida; }
+            saida.Add(texto);
+        }
+
+        FecharGrade();
+        EmitirPendentes();
+        return saida;
+    }
+
+    /// <summary>
+    /// Cabeçalho da grade de folhas: primeira célula "Rev."/"Pag." e as demais vazias ou
+    /// códigos de revisão. O cabeçalho do histórico ("Rev. | Data | Emissor | …") não casa,
+    /// porque suas demais células são palavras — e ele precisa continuar saindo inteiro.
+    /// </summary>
+    private static bool EhCabecalhoDeGrade(IReadOnlyList<ExtractedTableCell> celulas)
+    {
+        if (celulas.Count < 4) return false;
+
+        var primeira = celulas[0].Text.Trim().TrimEnd('.');
+        if (!primeira.Equals("Rev", StringComparison.OrdinalIgnoreCase)
+         && !primeira.Equals("Pag", StringComparison.OrdinalIgnoreCase)) return false;
+
+        return celulas.Skip(1)
+            .Select(c => c.Text.Trim().Replace(" ", string.Empty))
+            .Where(t => t.Length > 0)
+            .All(t => CodigoDeRevisao.IsMatch(t));
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CodigoDeRevisao =
+        new(@"^(0[A-Za-z]|\d{2}|Rev\.?|Pag\.?)$",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+          | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Conteúdo de uma célula ou parágrafo para a evidência. Imagens são declaradas em vez de
+    /// desaparecerem: na folha de rosto os campos "CONTRATANTE"/"CONTRATADA" são preenchidos
+    /// com logo e a assinatura do aprovador com imagem digitalizada — sem a marca, um campo
+    /// preenchido chega ao avaliador indistinguível de um campo em branco.
+    /// </summary>
+    private static string Conteudo(string? texto, int imagens)
+    {
+        var t = Resumo(texto, 120);
+        if (imagens <= 0) return t;
+        var marca = imagens == 1 ? "[imagem]" : $"[{imagens} imagens]";
+        return t.Length == 0 ? marca : $"{t} {marca}";
+    }
+
+    /// <summary>
+    /// Linhas de uma tabela com as colunas preservadas. Linhas sem texto e sem imagem são
+    /// descartadas: formulários de capa trazem dezenas de linhas em branco reservadas para
+    /// revisões futuras, e elas consomem orçamento sem informar nada.
+    /// </summary>
+    private static IEnumerable<string> LinhasDaTabela(ExtractedTable tabela, int maxLinhas = 40)
+    {
+        var linhas = tabela.Cells
+            .GroupBy(c => c.Row)
+            .OrderBy(g => g.Key)
+            .Select(g => g.OrderBy(c => c.Column)
+                          .Select(c => Conteudo(c.Text, c.ImageCount))
+                          .ToList())
+            .Where(celulas => celulas.Any(c => c.Length > 0))
+            .Select(celulas => string.Join(" | ", celulas))
             .ToList();
 
-        if (folha.Count == 0) return;
-        sb.AppendLine("## Folha de rosto / capa (parágrafos anteriores ao primeiro título)");
-        foreach (var t in folha) sb.AppendLine($"- {t}");
-        sb.AppendLine();
+        foreach (var l in linhas.Take(maxLinhas)) yield return l;
+        if (linhas.Count > maxLinhas) yield return $"… (+{linhas.Count - maxLinhas} linhas)";
     }
 
     private static void AppendQuadroCaracteristicas(StringBuilder sb, DocumentContext ctx)
@@ -85,9 +267,8 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
         var quadro = QuadroCaracteristicas.Find(ctx.Structure, aliases);
         if (quadro is null) return;
 
-        sb.AppendLine("## Quadro \"Características do Documento\"");
-        foreach (var (label, valor) in QuadroCaracteristicas.FieldsByLabel(quadro))
-            sb.AppendLine($"- {label}: {valor}");
+        sb.AppendLine("## Quadro \"Características do Documento\" (linha a linha, colunas separadas por |)");
+        foreach (var linha in LinhasDoQuadro(quadro)) sb.AppendLine($"- {linha}");
         sb.AppendLine();
     }
 

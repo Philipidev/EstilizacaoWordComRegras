@@ -23,7 +23,10 @@ public class CliExitCodeTests
     [Fact]
     public void Documento_conforme_sai_com_zero()
     {
-        var (exitCode, saida) = RodarReview(ProfilePadrao());
+        // O documento conforme é o RN799. O RN-816 deixou de servir aqui: ele carrega tarja de
+        // emissão obsoleta (ver RealDocumentCheckTests.DefeitosConhecidos), e usá-lo faria este
+        // teste exigir que o validador ignorasse um defeito real para continuar verde.
+        var (exitCode, saida) = RodarReview(ProfilePadrao(), "RN799RL6496600.docx");
 
         exitCode.Should().Be(ExitAprovado, $"documento de referência é conforme.\n{saida}");
         saida.Should().Contain("falhou:    0");
@@ -44,7 +47,8 @@ public class CliExitCodeTests
 
     // --- infraestrutura ---
 
-    private static (int ExitCode, string Saida) RodarReview(string profilePath)
+    private static (int ExitCode, string Saida) RodarReview(
+        string profilePath, string documento = "RN-816-RL-67456-00.docx")
     {
         var saida = Path.Combine(Path.GetTempPath(), $"cli-exit-{Guid.NewGuid():N}.docx");
         var cliDll = Path.Combine(AppContext.BaseDirectory, "WordComplianceValidator.Cli.dll");
@@ -63,7 +67,7 @@ public class CliExitCodeTests
         foreach (var arg in new[]
                  {
                      cliDll, "review",
-                     "--doc", RepoFile("templates", "RN-816-RL-67456-00.docx"),
+                     "--doc", RepoFile("templates", documento),
                      "--profile", profilePath,
                      "--out", saida,
                      "--no-llm",

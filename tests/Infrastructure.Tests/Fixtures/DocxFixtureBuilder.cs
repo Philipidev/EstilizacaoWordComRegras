@@ -52,6 +52,55 @@ public sealed class DocxFixtureBuilder
         return this;
     }
 
+    /// <summary>
+    /// Entrada de índice como o Word realmente a monta: numeração, <c>w:tab</c>, título,
+    /// <c>w:tab</c> e o resultado do campo PAGEREF. Os tabs são o que separa "10.4" do
+    /// título e o título do número da página.
+    /// </summary>
+    public DocxFixtureBuilder EntradaIndiceComTabs(string numero, string titulo, string pagina)
+    {
+        _blocos.Add(body =>
+        {
+            var p = new Paragraph(new ParagraphProperties(new ParagraphStyleId { Val = "TOC1" }));
+            p.AppendChild(new Run(new Text(numero) { Space = SpaceProcessingModeValues.Preserve }));
+            p.AppendChild(new Run(new TabChar()));
+            p.AppendChild(new Run(new Text(titulo) { Space = SpaceProcessingModeValues.Preserve }));
+            p.AppendChild(new Run(new TabChar()));
+            p.AppendChild(new Run(new FieldCode(" PAGEREF _Toc1 \\h ")
+            { Space = SpaceProcessingModeValues.Preserve }));
+            p.AppendChild(new Run(new Text(pagina) { Space = SpaceProcessingModeValues.Preserve }));
+            body.AppendChild(p);
+        });
+        return this;
+    }
+
+    /// <summary>Tabela com número arbitrário de colunas por linha, como a folha índice do cliente.</summary>
+    public DocxFixtureBuilder TabelaGrade(params string[][] linhas)
+    {
+        _blocos.Add(body =>
+        {
+            var t = new Table();
+            foreach (var linha in linhas)
+                t.AppendChild(new TableRow(linha.Select(Celula).ToArray<OpenXmlElement>()));
+            body.AppendChild(t);
+        });
+        return this;
+    }
+
+    /// <summary>Tabela de uma celula contendo varios paragrafos, como a celula de titulo da capa.</summary>
+    public DocxFixtureBuilder CelulaComVariosParagrafos(params string[] paragrafos)
+    {
+        _blocos.Add(body =>
+        {
+            var celula = new TableCell();
+            foreach (var texto in paragrafos)
+                celula.AppendChild(new Paragraph(new Run(
+                    new Text(texto) { Space = SpaceProcessingModeValues.Preserve })));
+            body.AppendChild(new Table(new TableRow(celula)));
+        });
+        return this;
+    }
+
     /// <summary>Tabela simples rótulo→valor, usada para o quadro "Características do Documento".</summary>
     public DocxFixtureBuilder Tabela(string primeiraLinha, params (string Rotulo, string Valor)[] linhas)
     {

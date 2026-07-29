@@ -24,11 +24,18 @@ public static class CheckRegistry
             new IniciaisDistintasCheck(ChecklistPadrao.Pda),
             new CodificacaoTecnicaCheck(),
             new QuadroCaracteristicasPreenchidoCheck(ChecklistPadrao.Cliente, "4.7"),
+            // O 4.7:Pda caía no avaliador semântico, que lia a grade de controle de folhas
+            // dentro do quadro como se fosse numeração da página do quadro. As duas exigências
+            // do item (preenchimento e ausência de numeração) são decidíveis pelo OOXML.
+            new QuadroCaracteristicasPreenchidoCheck(ChecklistPadrao.Pda, "4.7"),
             new QuadroCaracteristicasPreenchidoCheck(ChecklistPadrao.Cliente, "4.3.3 (letra e)"),
             new ConsistenciaIniciaisCheck(ChecklistPadrao.Cliente),
             new ConsistenciaIniciaisCheck(ChecklistPadrao.Pda),
             new IndiceAtualizadoCheck(),
             new PaginacaoAtualizadaCheck(ChecklistPadrao.Cliente, "4.3.3 (letra f)"),
+            // O 4.3.3(f):Pda caía no avaliador semântico, que lia o valor cacheado do campo
+            // PAGE ("FL.: 7/99", igual em toda parte de cabeçalho) como paginação repetida.
+            new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)"),
             new PaginacaoAtualizadaCheck(ChecklistPadrao.Cliente, "4.3.6.6"),
             new LocalizacaoCodificacaoCheck(),
             new CodificacaoClienteCheck(),

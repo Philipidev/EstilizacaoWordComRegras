@@ -87,6 +87,10 @@ public sealed class SemanticChecklistCheck : IRuleCheck
         return string.Join("\n", partes.Where(p => !string.IsNullOrWhiteSpace(p)));
     }
 
+    // Comprimento normalizado mínimo, em caracteres, para que um texto sirva de âncora.
+    // Vale tanto para a citação do modelo quanto para o parágrafo candidato.
+    private const int MinimoAncora = 8;
+
     /// <summary>
     /// Resolve o trecho devolvido pelo LLM para um parágrafo real do documento, para que o
     /// comentário seja inserido no lugar certo em vez de ficar solto no fim do arquivo.
@@ -97,16 +101,38 @@ public sealed class SemanticChecklistCheck : IRuleCheck
             return new ViolationLocation(null, null, null, "Avaliação semântica");
 
         var alvo = DocumentoTexto.Normalizar(trecho);
-        if (alvo.Length < 8)
+        if (alvo.Length < MinimoAncora)
             return new ViolationLocation(null, null, null, Resumo(trecho));
 
-        var paragrafo = ctx.Structure.Paragraphs.FirstOrDefault(p =>
-        {
-            var texto = DocumentoTexto.Normalizar(p.Text);
-            return texto.Length > 0
-                && (texto.Contains(alvo, StringComparison.Ordinal)
-                 || alvo.Contains(texto, StringComparison.Ordinal));
-        });
+        // O piso vale para os dois lados. A contenção reversa (parágrafo contido na citação)
+        // existe para ancorar quando o modelo cita uma linha inteira da evidência, mas sem
+        // piso ela casa qualquer célula de uma letra.
+        var candidatos = ctx.Structure.Paragraphs
+            .Select(p => (Par: p, Texto: DocumentoTexto.Normalizar(p.Text)))
+            .Where(x => x.Texto.Length >= MinimoAncora
+                     && (x.Texto.Contains(alvo, StringComparison.Ordinal)
+                      || alvo.Contains(x.Texto, StringComparison.Ordinal)))
+            .ToList();
+
+        // Ordem de preferência, e não "o primeiro que casar": a ordem do documento não diz
+        // nada sobre qualidade do casamento. Uma citação "assinatura do aprovador" casava a
+        // primeira célula "Aprovado" de uma tabela de ensaio, porque ela é substring da
+        // citação e vem antes no documento.
+        var paragrafo = candidatos
+            .Select(x => new
+            {
+                x.Par,
+                x.Texto,
+                Rank = x.Texto == alvo ? 0
+                     : x.Texto.Contains(alvo, StringComparison.Ordinal) ? 1
+                     : 2
+            })
+            .OrderBy(x => x.Rank)
+            // Rank 1 (parágrafo contém a citação): o menor é o mais justo. Rank 2 (parágrafo
+            // contido na citação): o maior é o que cobre mais do trecho citado.
+            .ThenBy(x => x.Rank == 1 ? x.Texto.Length : -x.Texto.Length)
+            .Select(x => x.Par)
+            .FirstOrDefault();
 
         return paragrafo is null
             ? new ViolationLocation(null, null, null, Resumo(trecho))
