@@ -30,11 +30,21 @@ Como validar um documento `.docx` e receber de volta o arquivo **com anotações
 A partir da raiz do repositório (`C:\Repositorios\Sysdam\EstilizacaoWordComRegras`):
 
 ```powershell
-dotnet run --project src/Cli -- review `
-  --doc      "C:\Repositorios\Sysdam\EstilizacaoWordComRegras\templates\RN-816-RL-67456-00.docx" `
-  --profile  "profiles\exemplo.json" `
-  --out      "C:\Repositorios\Sysdam\EstilizacaoWordComRegras\templates\out\RN-816-RL-67456-00-REVISADO.docx"
+dotnet run --project src/Cli -- review --doc "templates\RN-816-RL-67456-00.docx"
 ```
+
+Só o `--doc` é obrigatório. O checklist é procurado a partir do executável, o profile é
+resolvido sozinho quando existe apenas um em `profiles/`, e a saída vai para
+`<documento>-REVISADO.docx`, na pasta do documento. Para controlar tudo:
+
+```powershell
+dotnet run --project src/Cli -- review `
+  --doc      "templates\RN-816-RL-67456-00.docx" `
+  --profile  "profiles\exemplo.json" `
+  --out      "templates\out\RN-816-RL-67456-00-REVISADO.docx"
+```
+
+`--help` lista as opções e traz exemplos dos usos mais comuns.
 
 O que acontece:
 
@@ -60,8 +70,8 @@ O que acontece:
 | Flag            | Tipo    | Descrição                                                                                                        |
 | --------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
 | `--doc`         | caminho | **(obrigatório)** documento `.docx` a revisar                                                                    |
-| `--profile`     | caminho | **(obrigatório)** profile JSON do cliente                                                                        |
-| `--out`         | caminho | **(obrigatório)** onde salvar o `.docx` com comentários                                                          |
+| `--profile`     | caminho | profile JSON do cliente. Opcional quando há só um em `profiles/`; com vários, o CLI lista os nomes e pede a escolha |
+| `--out`         | caminho | onde salvar o `.docx` com comentários. Default: `<documento>-REVISADO.docx`, ao lado do original                 |
 | `--checklist`   | caminho | opcional — caminho do `CL-001-CL00100.xlsx` (default: `templates/checklists/CL-001-CL00100.xlsx`)                |
 | `--no-llm`      | flag    | desabilita checks semânticos via LLM (não precisa de `OPENAI_API_KEY`)                                           |
 | `--verbose`     | flag    | mostra também itens `Passed` e `Skipped` no terminal (padrão: só `Failed` e `Error`)                             |
@@ -94,18 +104,28 @@ dotnet run --project src/Cli -- review `
 Saída esperada (exemplo real):
 
 ```
-[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm). Checks semânticos serão pulados.
+── Revisor · CL-001 ─────────────────────────────────────────────────────────
 
-Cliente: MRN (exemplo)
-Total de itens do checklist: 86
-  passou:    32
-  falhou:    0
-  pulado:    54
-  erro:      0
+Documento   RN799RL6496600.docx
+Cliente     MRN (exemplo)
+Checklist   CL-001-CL00100.xlsx
+Saída       revisado.docx
 
+! Sem LLM: ortografia e regras semânticas serão puladas.
 
-Saída: C:\...\output\revisado.docx
+✓ nenhuma não conformidade  ·  ! 7 aviso(s)  ·  ✓ 23 conformes  ·  – 63 não aplicáveis
+
+– PS-002:4.3.3 (letra f):Pda
+    • O total de páginas no cabeçalho está gravado como texto fixo ("34") em vez
+      de campo NUMPAGES: ele não é atualizado ao repaginar o documento.
+…
+
+7 comentário(s) inserido(s)
+C:\...\output\revisado.docx
 ```
+
+Avisos aparecem separados das não conformidades: eles também viram comentário no `.docx`,
+mas não reprovam o documento nem mudam o exit code.
 
 Abra `output/revisado.docx` no Word — se houver violações, os comentários
 estarão visíveis no painel lateral de revisão.
@@ -351,7 +371,32 @@ Sugestão de fluxo na equipe:
 
 
 
-## 10. Resumo
+## 10. Distribuir para quem não tem .NET
+
+`publicar.ps1` gera uma pasta autocontida — quem recebe não precisa de SDK, runtime nem do
+repositório:
+
+```powershell
+.\publicar.ps1
+```
+
+Sai em `dist\`:
+
+```
+Revisor.exe                              (~77 MB, autocontido)
+templates\checklists\CL-001-CL00100.xlsx
+profiles\*.json
+```
+
+Copie a pasta inteira para a máquina de destino e chame `Revisor.exe review --doc "...".`
+O `LocalizadorDeRecursos` procura o checklist e os profiles a partir da pasta do executável,
+então o programa funciona chamado de qualquer diretório.
+
+O script recusa publicar se um `appsettings.*.json` local entrar no pacote — é onde a
+`OPENAI_API_KEY` fica em desenvolvimento, e ela não pode ser distribuída junto. Sem chave
+configurada na máquina de destino, o Revisor roda apenas as verificações determinísticas.
+
+## 11. Resumo
 
 ```powershell
 # Caminho mais curto, sem LLM, salvando o resultado:

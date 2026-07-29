@@ -1,7 +1,11 @@
 using System.CommandLine;
+using System.CommandLine.Builder;
+using System.CommandLine.Help;
 using System.CommandLine.Invocation;
+using System.CommandLine.Parsing;
 using Microsoft.Extensions.Configuration;
 using WordComplianceValidator.Application.Services;
+using WordComplianceValidator.Cli.Terminal;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -25,12 +29,22 @@ var openAi = new OpenAiSettings
 };
 
 var docOpt = new Option<FileInfo>("--doc", "Documento .docx a revisar.") { IsRequired = true };
+docOpt.AddAlias("-d");
 var checklistOpt = new Option<FileInfo>(
     "--checklist",
-    description: "Caminho do checklist .xlsx (default: templates/checklists/CL-001-CL00100.xlsx).",
-    getDefaultValue: () => new FileInfo(Path.Combine(Directory.GetCurrentDirectory(), "templates", "checklists", "CL-001-CL00100.xlsx")));
-var profileOpt = new Option<FileInfo>("--profile", "Caminho do JSON de profile do cliente.") { IsRequired = true };
-var outOpt = new Option<FileInfo>("--out", "Caminho do .docx comentado de saída.") { IsRequired = true };
+    description: "Caminho do checklist .xlsx (default: procurado a partir do executável).",
+    // Antes o default era montado sobre Directory.GetCurrentDirectory(), o que só acerta quando
+    // o programa roda da raiz do repositório. O localizador parte do executável e sobe a árvore,
+    // então também funciona num binário publicado, chamado de qualquer pasta.
+    getDefaultValue: () => new FileInfo(
+        LocalizadorDeRecursos.Checklist()
+        ?? Path.Combine(AppContext.BaseDirectory, "templates", "checklists", "CL-001-CL00100.xlsx")));
+var profileOpt = new Option<FileInfo?>(
+    "--profile",
+    "Profile JSON do cliente. Opcional quando existe um único profile na pasta 'profiles'.");
+var outOpt = new Option<FileInfo?>(
+    "--out",
+    "Arquivo .docx de saída. Default: <documento>-REVISADO.docx, na pasta do documento.");
 var noLlmOpt = new Option<bool>("--no-llm", () => false, "Desabilita checks que usam LLM.");
 var verboseOpt = new Option<bool>("--verbose", () => false, "Inclui itens pulados no output.");
 var onlyIaSimOpt = new Option<bool>(
@@ -57,57 +71,100 @@ reviewCmd.SetHandler(async (InvocationContext ctx) =>
     var verbose = parsed.GetValueForOption(verboseOpt);
     var onlyIaSim = parsed.GetValueForOption(onlyIaSimOpt);
 
-    var extractor = new DocxStructureExtractor();
-    var checklistRepo = new ExcelChecklistRepository();
-    var profileRepo = new JsonClientProfileRepository();
-    var inserter = new CommentInserter();
-
-    var usarLlm = !noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey);
-    var semantic = usarLlm ? new OpenAiSemanticChecker(openAi) : null;
-
-    var checks = CheckRegistry.Deterministicos(semantic);
-
-    // Fábrica consultada pelo engine para entradas do checklist sem check dedicado.
-    Func<ChecklistEntry, DocumentContext, IRuleCheck?>? semanticFallback = null;
-
-    if (semantic is not null)
+    // Validação antes de qualquer trabalho: cada mensagem diz qual opção está errada e com
+    // que caminho ela ficou. Sem isso, um caminho digitado errado virava
+    // "Unhandled exception: FileNotFoundException" com um stack trace no meio da tela.
+    if (!doc.Exists)
     {
-        semanticFallback = new SemanticCheckFactory(semantic).Create;
-        Console.WriteLine($"[info] LLM habilitado (modelo padrão {openAi.Model}).");
+        Apresentacao.Erro("Documento não encontrado", doc.FullName, "Confira o caminho em --doc.");
+        ctx.ExitCode = 1;
+        return;
     }
+
+    if (!doc.Extension.Equals(".docx", StringComparison.OrdinalIgnoreCase))
+    {
+        Apresentacao.Erro("O documento precisa ser .docx", doc.FullName,
+            $"Recebi um arquivo '{doc.Extension}'. Formatos .doc antigos não são suportados.");
+        ctx.ExitCode = 1;
+        return;
+    }
+
+    if (!checklist.Exists)
+    {
+        Apresentacao.Erro("Checklist não encontrado", checklist.FullName,
+            "Passe o caminho em --checklist ou deixe o .xlsx em 'templates/checklists'.");
+        ctx.ExitCode = 1;
+        return;
+    }
+
+    var profilePath = ResolverProfile(profile);
+    if (profilePath is null) { ctx.ExitCode = 1; return; }
+
+    var saidaPath = outFile?.FullName ?? LocalizadorDeRecursos.SaidaPadrao(doc.FullName);
+
+    var svc = MontarServico(onlyIaSim, noLlm, logar: false);
+    var perfilCarregado = await new JsonClientProfileRepository().LoadAsync(profilePath);
+
+    Apresentacao.Cabecalho(doc.FullName, perfilCarregado.Cliente, checklist.FullName, saidaPath);
+
+    if (noLlm || string.IsNullOrWhiteSpace(openAi.ApiKey))
+        Apresentacao.Aviso("Sem LLM: ortografia e regras semânticas serão puladas.");
     else
+        Apresentacao.Info($"LLM habilitado (modelo {openAi.Model}).");
+
+    DocumentReviewReport report;
+    var progresso = Apresentacao.BarraDeProgresso(out var escopoProgresso);
+    try
     {
-        Console.WriteLine("[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm). Checks semânticos serão pulados.");
+        report = await svc.ReviewAsync(
+            doc.FullName, checklist.FullName, profilePath, saidaPath, CancellationToken.None, progresso);
+    }
+    catch (Exception ex)
+    {
+        escopoProgresso?.Dispose();
+        Apresentacao.Erro("A revisão não foi concluída", null, ex.Message);
+        ctx.ExitCode = 1;
+        return;
+    }
+    finally
+    {
+        escopoProgresso?.Dispose();
     }
 
-    var engine = new ChecklistEngine(checks, honrarColunaIa: onlyIaSim, fallback: semanticFallback);
-    var svc = new DocumentReviewService(extractor, checklistRepo, profileRepo, engine, inserter);
+    Apresentacao.Resumo(report);
+    Apresentacao.Detalhes(report, verbose);
+    Apresentacao.Saida(saidaPath, report.Violations.Count);
 
-    var report = await svc.ReviewAsync(doc.FullName, checklist.FullName, profile.FullName, outFile.FullName);
-
-    Console.WriteLine();
-    Console.WriteLine($"Cliente: {report.Cliente}");
-    Console.WriteLine($"Total de itens do checklist: {report.Results.Count}");
-    Console.WriteLine($"  passou:    {report.Passed}");
-    Console.WriteLine($"  falhou:    {report.Failed}");
-    Console.WriteLine($"  pulado:    {report.Skipped}");
-    Console.WriteLine($"  erro:      {report.Errored}");
-    Console.WriteLine();
-
-    var toShow = verbose ? report.Results : report.Results.Where(r => r.Status is CheckStatus.Failed or CheckStatus.Error);
-    foreach (var r in toShow)
-    {
-        Console.WriteLine($"  [{r.Status}] {r.Ref}");
-        foreach (var v in r.Violations)
-            Console.WriteLine($"      → [{v.Severity}] {v.Message}");
-        if (!string.IsNullOrEmpty(r.Note))
-            Console.WriteLine($"      note: {r.Note}");
-    }
-
-    Console.WriteLine();
-    Console.WriteLine($"Saída: {outFile.FullName}");
     ctx.ExitCode = report.Violations.Any(v => v.Severity == Severity.Error) ? 2 : 0;
 });
+
+// Profile explícito vence; sem ele, só resolve sozinho quando a escolha é inequívoca. Havendo
+// vários, listar os nomes é mais útil do que exigir que a pessoa vá procurar a pasta.
+static string? ResolverProfile(FileInfo? informado)
+{
+    if (informado is not null)
+    {
+        if (informado.Exists) return informado.FullName;
+        Apresentacao.Erro("Profile não encontrado", informado.FullName, "Confira o caminho em --profile.");
+        return null;
+    }
+
+    var disponiveis = LocalizadorDeRecursos.Profiles();
+
+    if (disponiveis.Count == 1) return disponiveis[0];
+
+    if (disponiveis.Count == 0)
+    {
+        Apresentacao.Erro("Nenhum profile de cliente encontrado",
+            LocalizadorDeRecursos.PastaDeProfiles() ?? "(pasta 'profiles' não localizada)",
+            "Informe um com --profile ou coloque um .json na pasta 'profiles'.");
+        return null;
+    }
+
+    Apresentacao.Erro("Existe mais de um profile; escolha um com --profile", null,
+        "Disponíveis: " + string.Join(", ", disponiveis.Select(Path.GetFileName)));
+    return null;
+}
 
 // ---- checklist dump (debug) ----
 var dumpCmd = new Command("dump-checklist", "Lista entradas do checklist .xlsx.")
@@ -123,5 +180,68 @@ dumpCmd.SetHandler(async (FileInfo checklist) =>
         Console.WriteLine($"  {e.Ref,-40} IA={(e.IaAutomatizavel ? "Sim" : "Não")}  {e.Titulo}");
 }, checklistOpt);
 
-var root = new RootCommand("Word Compliance Validator CLI") { reviewCmd, dumpCmd };
-return await root.InvokeAsync(args);
+// Montagem única do serviço, compartilhada pelo modo com flags e pelo fluxo guiado — sem isso
+// as duas portas de entrada divergiriam em silêncio na configuração do motor.
+DocumentReviewService MontarServico(bool onlyIaSim, bool noLlm, bool logar)
+{
+    var usarLlm = !noLlm && !string.IsNullOrWhiteSpace(openAi.ApiKey);
+    var semantic = usarLlm ? new OpenAiSemanticChecker(openAi) : null;
+
+    Func<ChecklistEntry, DocumentContext, IRuleCheck?>? semanticFallback = null;
+    if (semantic is not null)
+    {
+        semanticFallback = new SemanticCheckFactory(semantic).Create;
+        if (logar) Console.WriteLine($"[info] LLM habilitado (modelo padrão {openAi.Model}).");
+    }
+    else if (logar)
+    {
+        Console.WriteLine("[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm). Checks semânticos serão pulados.");
+    }
+
+    var engine = new ChecklistEngine(
+        CheckRegistry.Deterministicos(semantic), honrarColunaIa: onlyIaSim, fallback: semanticFallback);
+
+    return new DocumentReviewService(
+        new DocxStructureExtractor(),
+        new ExcelChecklistRepository(),
+        new JsonClientProfileRepository(),
+        engine,
+        new CommentInserter());
+}
+
+var root = new RootCommand(
+    "Revisa documentos técnicos .docx contra o checklist CL-001 e devolve uma cópia comentada.")
+{
+    reviewCmd, dumpCmd
+};
+
+// O help gerado lista as opções, mas não mostra como o comando se parece de verdade. Os
+// exemplos cobrem os três usos reais: o mínimo, o de pipeline e o de diagnóstico.
+var parser = new CommandLineBuilder(root)
+    .UseDefaults()
+    .UseHelp(ctx =>
+    {
+        ctx.HelpBuilder.CustomizeLayout(_ =>
+            HelpBuilder.Default.GetLayout().Append(_ =>
+            {
+                Console.WriteLine("Exemplos:");
+                Console.WriteLine();
+                Console.WriteLine("  Revisão simples (usa o único profile disponível e salva ao lado do original):");
+                Console.WriteLine("    Revisor review --doc \"C:\\docs\\RN-816.docx\"");
+                Console.WriteLine();
+                Console.WriteLine("  Escolhendo cliente e destino:");
+                Console.WriteLine("    Revisor review --doc \"RN-816.docx\" --profile profiles\\mrn.json --out \"revisado.docx\"");
+                Console.WriteLine();
+                Console.WriteLine("  Em pipeline, sem LLM (sai com código 2 se houver não conformidade):");
+                Console.WriteLine("    Revisor review --doc \"RN-816.docx\" --no-llm");
+                Console.WriteLine();
+                Console.WriteLine("  Vendo também o que foi pulado e por quê:");
+                Console.WriteLine("    Revisor review --doc \"RN-816.docx\" --verbose");
+                Console.WriteLine();
+                Console.WriteLine("Códigos de saída: 0 conforme · 2 não conformidades · 1 erro de execução.");
+                Console.WriteLine();
+            }));
+    })
+    .Build();
+
+return await parser.InvokeAsync(args);

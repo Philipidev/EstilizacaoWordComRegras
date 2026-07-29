@@ -29,7 +29,7 @@ public class CliExitCodeTests
         var (exitCode, saida) = RodarReview(ProfilePadrao(), "RN799RL6496600.docx");
 
         exitCode.Should().Be(ExitAprovado, $"documento de referência é conforme.\n{saida}");
-        saida.Should().Contain("falhou:    0");
+        saida.Should().Contain("nenhuma não conformidade");
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class CliExitCodeTests
 
         exitCode.Should().Be(ExitReprovado,
             $"há violação Error e o gate de CI depende disso.\n{saida}");
-        saida.Should().Contain("[Error]");
+        saida.Should().Contain("não conformes");
     }
 
     // --- infraestrutura ---
@@ -51,7 +51,7 @@ public class CliExitCodeTests
         string profilePath, string documento = "RN-816-RL-67456-00.docx")
     {
         var saida = Path.Combine(Path.GetTempPath(), $"cli-exit-{Guid.NewGuid():N}.docx");
-        var cliDll = Path.Combine(AppContext.BaseDirectory, "WordComplianceValidator.Cli.dll");
+        var cliDll = Path.Combine(AppContext.BaseDirectory, "Revisor.dll");
         File.Exists(cliDll).Should().BeTrue(
             $"o CLI precisa estar no output do projeto de testes (ProjectReference): {cliDll}");
 

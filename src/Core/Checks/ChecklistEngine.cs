@@ -58,12 +58,19 @@ public sealed class ChecklistEngine
     public async Task<IReadOnlyList<RuleCheckResult>> RunAsync(
         DocumentContext ctx,
         IReadOnlyList<ChecklistEntry> catalog,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<ProgressoDaRevisao>? progresso = null)
     {
         // Posicional: os checks rodam concorrentemente, mas o relatório sai na ordem do CL-001.
         var results = new RuleCheckResult[catalog.Count];
         var pendentes = new List<Task>();
         using var gate = new SemaphoreSlim(_maxParalelismo);
+
+        // Incrementado de vários threads: os checks rodam concorrentemente.
+        var concluidos = 0;
+        void Reportar(ChecklistRef reference) =>
+            progresso?.Report(new ProgressoDaRevisao(
+                Interlocked.Increment(ref concluidos), catalog.Count, reference.ToString()));
 
         for (var i = 0; i < catalog.Count; i++)
         {
@@ -89,6 +96,7 @@ public sealed class ChecklistEngine
 
             results[indice] = new RuleCheckResult(entry.Ref, CheckStatus.Skipped,
                 Array.Empty<Violation>(), Note: motivo);
+            Reportar(entry.Ref);
         }
 
         await Task.WhenAll(pendentes);
@@ -110,6 +118,7 @@ public sealed class ChecklistEngine
             finally
             {
                 gate.Release();
+                Reportar(entry.Ref);
             }
         }
     }

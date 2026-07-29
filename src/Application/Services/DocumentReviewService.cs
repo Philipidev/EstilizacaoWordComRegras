@@ -43,14 +43,15 @@ public sealed class DocumentReviewService
         string checklistPath,
         string profilePath,
         string outputDocxPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<ProgressoDaRevisao>? progresso = null)
     {
         var profile = await _profileRepo.LoadAsync(profilePath, cancellationToken);
         var catalog = await _checklistRepo.LoadAsync(checklistPath, cancellationToken);
         var structure = _extractor.ExtractFromFile(documentPath);
         var ctx = new DocumentContext(documentPath, structure, profile);
 
-        var results = await _engine.RunAsync(ctx, catalog, cancellationToken);
+        var results = await _engine.RunAsync(ctx, catalog, cancellationToken, progresso);
         var violations = results.SelectMany(r => r.Violations).ToList();
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputDocxPath)!);
