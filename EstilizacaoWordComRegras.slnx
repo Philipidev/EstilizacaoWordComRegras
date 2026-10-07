@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="nuget.config" />
+    <File Path="publicar.ps1" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Application/WordComplianceValidator.Application.csproj" />
+    <Project Path="src/Cli/WordComplianceValidator.Cli.csproj" />
+    <Project Path="src/Core/WordComplianceValidator.Core.csproj" />
+    <Project Path="src/Infrastructure/WordComplianceValidator.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Core.Tests/WordComplianceValidator.Core.Tests.csproj" />
+    <Project Path="tests/Infrastructure.Tests/WordComplianceValidator.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

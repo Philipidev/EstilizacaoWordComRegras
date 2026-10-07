@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -12,8 +11,6 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
 {
-    private const RegexOptions Opt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-    private const int FolhaRostoParagraphCount = 60;
 
     public LocalizacaoCodificacaoCheck(ChecklistPadrao padrao = ChecklistPadrao.Cliente)
     {
@@ -37,15 +34,13 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var table = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
-        var quadroCodigo = ExtractCode(
-            table?.Cells.Select(c => c.Text) ?? Array.Empty<string>(), pdaRx);
+        var quadroCodigo = Codificacao.EncontrarEmQualquer(
+            table?.Cells.Select(c => c.Text) ?? Array.Empty<string>(), pdaRx)?.Completo;
 
-        // Folha de rosto = parágrafos iniciais antes do primeiro heading + cabeçalho da primeira seção.
-        var folhaParagrafos = CoerenciaRevisoesCheck.TakeFolhaRosto(
-                ctx.Structure.Paragraphs, FolhaRostoParagraphCount)
-            .Select(p => p.Text);
-        var headerTextos = ctx.Structure.Headers.Select(h => h.Text);
-        var folhaCodigo = ExtractCode(folhaParagrafos.Concat(headerTextos), pdaRx);
+        // Folha de rosto = capa até o primeiro título. Os cabeçalhos ficavam juntos e eram
+        // eles que "achavam" a codificação: a folha de rosto real nem chegava a ser lida.
+        var folhaCodigo = Codificacao.EncontrarEmQualquer(
+            DocumentoTexto.FolhaDeRosto(ctx.Structure).Select(p => p.Text), pdaRx)?.Completo;
 
         var stem = string.IsNullOrEmpty(ctx.Structure.FileName)
             ? null : Path.GetFileNameWithoutExtension(ctx.Structure.FileName);
@@ -68,8 +63,8 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
 
         if (!string.IsNullOrEmpty(quadroCodigo)
             && !string.IsNullOrEmpty(folhaCodigo)
-            && !NormalizeCode(WithoutRevisionSuffix(quadroCodigo))
-                .Equals(NormalizeCode(WithoutRevisionSuffix(folhaCodigo)), StringComparison.Ordinal))
+            && !Codificacao.Compacto(Codificacao.Encontrar(quadroCodigo, pdaRx)!.Base)
+                .Equals(Codificacao.Compacto(Codificacao.Encontrar(folhaCodigo, pdaRx)!.Base), StringComparison.Ordinal))
         {
             violations.Add(new Violation(Ref.ToString(), Severity.Error,
                 $"Codificação diverge entre folha de rosto ('{folhaCodigo}') e quadro Características ('{quadroCodigo}').",
@@ -78,8 +73,8 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
 
         if (!string.IsNullOrEmpty(stem) && !string.IsNullOrEmpty(quadroCodigo))
         {
-            var stemNorm = NormalizeCode(stem);
-            var codeNorm = NormalizeCode(WithoutRevisionSuffix(quadroCodigo));
+            var stemNorm = Codificacao.Compacto(stem);
+            var codeNorm = Codificacao.Compacto(Codificacao.Encontrar(quadroCodigo, pdaRx)!.Base);
 
             // Direct match (com/sem revisão) ou contenção mútua.
             var direct = stemNorm.Contains(codeNorm, StringComparison.Ordinal)
@@ -90,12 +85,12 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
             // magnético/Meridian distinto do código PdA).
             var alternative = table is not null && table.Cells.Any(c =>
                 !string.IsNullOrWhiteSpace(c.Text)
-                && NormalizeCode(c.Text).Contains(stemNorm, StringComparison.Ordinal));
+                && Codificacao.Compacto(c.Text).Contains(stemNorm, StringComparison.Ordinal));
 
             if (!direct && !alternative)
             {
                 violations.Add(new Violation(Ref.ToString(), Severity.Warning,
-                    $"Nome do arquivo ('{stem}') não reflete a codificação do quadro ('{quadroCodigo}').",
+                    Codificacao.MensagemDeNomeDeArquivo(stem, quadroCodigo, Path.GetExtension(ctx.Structure.FileName)),
                     new ViolationLocation(null, null, null, "Arquivo")));
             }
         }
@@ -105,30 +100,4 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
                    : CheckStatus.Skipped;
         return Task.FromResult(new RuleCheckResult(Ref, status, violations));
     }
-
-    private static string? ExtractCode(IEnumerable<string> texts, string regex)
-    {
-        var pattern = SearchPattern(regex);
-        foreach (var t in texts)
-        {
-            if (string.IsNullOrWhiteSpace(t)) continue;
-            var m = Regex.Match(t, pattern, Opt);
-            if (m.Success) return m.Value;
-        }
-        return null;
-    }
-
-    private static string SearchPattern(string regex)
-    {
-        var p = regex.Trim();
-        if (p.StartsWith('^')) p = p[1..];
-        if (p.EndsWith('$')) p = p[..^1];
-        return p + @"(?:-\d+)?";
-    }
-
-    private static string WithoutRevisionSuffix(string value) =>
-        Regex.Replace(value.Trim(), @"-\d+$", string.Empty, Opt);
-
-    private static string NormalizeCode(string value) =>
-        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

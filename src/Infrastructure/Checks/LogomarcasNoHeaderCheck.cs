@@ -12,7 +12,10 @@ public sealed class LogomarcasNoHeaderCheck : IRuleCheck
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
         var minimo = ctx.Profile.GetInt("logomarcas.minimo") ?? 2;
-        var totalImagens = ctx.Structure.Headers.Sum(h => h.ImageCount);
+        // As logomarcas da PdA e do Cliente ficam juntas no mesmo cabeçalho. Somar as imagens
+        // de todos os cabeçalhos aprovava um logo por seção em duas seções — nenhuma página com
+        // as duas marcas. Vale o cabeçalho exibido que mais tem imagens.
+        var totalImagens = ctx.Structure.Headers.Select(h => h.ImageCount).DefaultIfEmpty(0).Max();
         var violations = new List<Violation>();
 
         if (ctx.Structure.Headers.Count == 0)

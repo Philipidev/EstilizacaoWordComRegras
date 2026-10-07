@@ -24,7 +24,7 @@ Formato do `Ref`: `PS:Item:Padrão`.
 | Status | Ref | Título | IA? | Implementação |
 |---|---|---|---|---|
 | [x] | `PS-002:4.1:Cliente` | Logomarcas no cabeçalho | Sim | `LogomarcasNoHeaderCheck` |
-| [~] | `PS-002:4.2:Cliente` | Ortografia e Gramática | Não | motor semântico (`gpt-5.6-sol`) |
+| [~] | `PS-002:4.2:Cliente` | Ortografia e Gramática | Não | motor semântico |
 | [x] | `PS-002:4.3.1:Pda` | Folha de Rosto (campos PdA) | Sim | `FolhaRostoCheck` |
 | [x] | `PS-002:4.3.2:Cliente` | Folha de rosto × Características (LLM) | Sim | `FolhaRostoVsCaracteristicasCheck` |
 | [x] | `PS-002:4.3.3 (letra a):Pda` | Continuidade de título e conteúdo | Sim | `ContinuidadeTituloConteudoCheck(Pda)` ⚠ heurístico |
@@ -39,11 +39,11 @@ Formato do `Ref`: `PS:Item:Padrão`.
 | [x] | `PS-002:4.3.3 (letra e):Cliente` | Preenchimento de campos obrigatórios | Sim | `QuadroCaracteristicasPreenchidoCheck(item="4.3.3 (letra e)")` |
 | [x] | `PS-002:4.3.3 (letra f):Pda` | Paginação atualizada | — | `PaginacaoAtualizadaCheck(Pda, "4.3.3 (letra f)")` |
 | [x] | `PS-002:4.3.3 (letra f):Cliente` | Paginação atualizada | Sim | `PaginacaoAtualizadaCheck(item="4.3.3 (letra f)")` |
-| [~] | `PS-002:4.3.3 (letra g):Pda` | Padronização de cabeçalhos | — | motor semântico |
+| [x] | `PS-002:4.3.3 (letra g):Pda` | Padronização de cabeçalhos | — | `CabecalhosPadronizadosCheck(Pda)` |
 | [x] | `PS-002:4.3.3 (letra g):Cliente` | Padronização de cabeçalhos | Sim | `CabecalhosPadronizadosCheck` |
-| [~] | `PS-002:4.3.3 (letra h):Pda` | Correção de referências cruzadas | — | motor semântico |
+| [x] | `PS-002:4.3.3 (letra h):Pda` | Correção de referências cruzadas | — | `ReferenciasCruzadasCheck(Pda)` |
 | [x] | `PS-002:4.3.3 (letra h):Cliente` | Correção de referências cruzadas | Sim | `ReferenciasCruzadasCheck` |
-| [~] | `PS-002:4.3.3 (letra i):Pda` | Coerência entre revisões | — | motor semântico |
+| [x] | `PS-002:4.3.3 (letra i):Pda` | Coerência entre revisões | — | `CoerenciaRevisoesCheck(Pda)` |
 | [x] | `PS-002:4.3.3 (letra i):Cliente` | Coerência entre revisões | Sim | `CoerenciaRevisoesCheck` |
 | [x] | `PS-002:4.3.4.1:Pda` | Identificação da página do índice | — | `IndicePaginaCheck` (exige `folhaRosto.contratante`) |
 | [~] | `PS-002:4.3.4.2:Pda` | Formatação do índice | — | motor semântico |
@@ -90,14 +90,14 @@ Formato do `Ref`: `PS:Item:Padrão`.
 
 | Status | Ref | Título | IA? | Implementação |
 |---|---|---|---|---|
-| [~] | `PS-018:4.3:Pda` | Codificação técnica (PdA) | — | motor semântico (`gpt-5.6-terra`) |
+| [~] | `PS-018:4.3:Pda` | Codificação técnica (PdA) | — | motor semântico |
 | [x] | `PS-018:4.3:Cliente` | Codificação técnica (Cliente) | Sim | `CodificacaoTecnicaCheck` |
 | [~] | `PS-018:4.3.2 (letra a):Pda` | Localização da codificação (PdA) | — | motor semântico |
 | [x] | `PS-018:4.3.2 (letra a):Cliente` | Localização da codificação | Sim | `LocalizacaoCodificacaoCheck` |
 | [~] | `PS-018:4.4:Pda/Cliente` | Citação de documentos | Não | motor semântico |
-| [~] | `PS-018:4.7:Pda` | Codificação do cliente (PdA) | — | motor semântico (`gpt-5.6-terra`) |
+| [~] | `PS-018:4.7:Pda` | Codificação do cliente (PdA) | — | motor semântico |
 | [x] | `PS-018:4.7:Cliente` | Codificação do cliente | Sim | `CodificacaoClienteCheck` |
-| [~] | `PS-018:4.8:Pda` | Evolução do documento (PdA) | — | motor semântico (`gpt-5.6-terra`) |
+| [~] | `PS-018:4.8:Pda` | Evolução do documento (PdA) | — | motor semântico |
 | [x] | `PS-018:4.8:Cliente` | Evolução do documento | Sim | `EvolucaoDocumentoCheck` |
 | [~] | `PS-018:4.9:Pda/Cliente` | Coerência entre revisões | Não | motor semântico |
 
@@ -108,7 +108,7 @@ Formato do `Ref`: `PS:Item:Padrão`.
 | [x] | `PS-024:4.1.2:Pda/Cliente` | Etapa para comentários e aprovação (0A–0Z) | — | `TarjaEmissaoCheck(item="4.1.2")` ³ |
 | [x] | `PS-024:4.1.3:Pda/Cliente` | Emissão final (00) e revisões subsequentes | — | `TarjaEmissaoCheck(item="4.1.3")` ¹ |
 | [x] | `PS-024:4.1.4:Pda/Cliente` | Documentos traduzidos | — | `TarjaEmissaoCheck(item="4.1.4")` — registrado, mas retorna sempre `Skipped` ² |
-| [~] | `PS-024:4.3:Pda/Cliente` | Cancelamento de documentos | — | motor semântico (`gpt-5.6-luna`) |
+| [~] | `PS-024:4.3:Pda/Cliente` | Cancelamento de documentos | — | motor semântico |
 
 ¹ A tarja "Não é Válido para Execução" só é exigida para estudo preliminar, projeto conceitual
 e projeto básico — o tipo do projeto não é dedutível do `.docx`, então a cobrança depende de
@@ -136,12 +136,12 @@ Contagem por **entrada do CL-001** (as tabelas acima têm linhas `:Pda/Cliente` 
 representam duas entradas cada, então o número de linhas é menor que o de entradas):
 
 - Total de itens no CL-001: **86**
-- Com `IRuleCheck` dedicado `[x]`: **39** — sendo **38** sem LLM
+- Com `IRuleCheck` dedicado `[x]`: **44** — sendo **43** sem LLM
   (`PS-002:4.3.2:Cliente` exige avaliação semântica e só é registrado com a chave configurada)
-- Cobertos pelo motor semântico `[~]` (allow-list de `profiles/exemplo.json`): **23**
+- Cobertos pelo motor semântico `[~]` (allow-list de `profiles/exemplo.json`): **18**
 - Manuais `[-]` — dependem de sistema externo: **24**
   (22 entradas do PS-005 + as 2 de `4.3.3 (letra b)`, que exigem o PL-011)
-- Soma: 39 + 23 + 24 = **86** ✅
+- Soma: 44 + 18 + 24 = **86** ✅
 - **Sem destino declarado: 0** — garantido por `CatalogCoverageTests`
 
 > Para referência histórica: a versão anterior cobria **21** itens, limitada pela coluna
@@ -153,17 +153,20 @@ representam duas entradas cada, então o número de linhas é menor que o de ent
 
 | Documento | LLM | passou | falhou | pulado | erro |
 |---|---|---:|---:|---:|---:|
-| `RN799RL6496600.docx` | não | 26 | 0 | 60 | 0 |
-| `RN-816-RL-67456-00.docx` | não | 32 | 0 | 54 | 0 |
-| `RN799RL6496600.docx` | `gpt-5.6-sol` | 31 | 7 | 48 | 0 |
-| `RN-816-RL-67456-00.docx` | `gpt-5.6-sol` | 35 | 11 | 40 | 0 |
+| `RN799RL6496600.docx` | não | 27 | 0 | 59 | 0 |
+| `RN-816-RL-67456-00.docx` | não | 31 | 2 | 53 | 0 |
+| `RN799RL6496600.docx` | `gpt-6.1-sol` medium | 35 | 2 | 49 | 0 |
+| `RN-816-RL-67456-00.docx` | `gpt-6.1-sol` medium | 37 | 4 | 45 | 0 |
 
-(Baseline anterior à expansão: 19 / 0 / 67 / 0 nos dois, sem LLM.)
+As 2 falhas do RN-816 sem LLM são o mesmo defeito real nos dois padrões de `4.3.3 (letra h)`:
+quatro campos de referência cruzada vazios apontam para indicadores inexistentes. Com LLM somam-se ortografia
+(`4.2`) e a assinatura do aprovador em branco (`4.3.3 (letra e):Pda`).
 
-Rodada completa com LLM: **~35 s** — os checks rodam concorrentemente e o pacote de
-evidências é montado uma vez por documento.
+Rodada completa com LLM: **~35 s e ~US$ 0,08 por documento** — os checks rodam
+concorrentemente, o pacote de evidências é montado uma vez por documento e ~93% da entrada sai
+do cache de prompt.
 
-### Cobertura de testes (93 testes)
+### Cobertura de testes (135 testes)
 
 - `RealDocumentCheckTests` — documentos reais conformes não produzem `Severity.Error`
   nem `Failed` (**precisão**).
@@ -184,14 +187,26 @@ Validado iterativamente: bugs corrigidos durante a calibragem:
 
 - `QuadroCaracteristicasPreenchidoCheck` — passou a usar aliases por campo (Elaborador/Emissor sinônimos) e fallback de layout coluna para quadros com histórico de revisões.
 - `CabecalhosPadronizadosCheck` — filtra tokens residuais de posicionamento de imagem flutuante (`right218440`); cabeçalhos só com imagem (sem texto) não contam como divergentes; imagens só reclamam quando >50% divergem do padrão.
-- `CoerenciaRevisoesCheck` — só aceita revisões em contexto explícito (`Rev. XX`); evita pegar números soltos de tabelas. Sem contexto → Skipped.
-- `FolhaRostoCheck` / `LocalizacaoCodificacaoCheck` — "folha de rosto" inclui parágrafos antes do primeiro heading + primeiras 2 tabelas + headers de seção.
+- `CoerenciaRevisoesCheck` — compara o sufixo das codificações PdA/Cliente com a revisão vigente e casa as emissões ao Cliente com as revisões PdA por data; quadro sem histórico cai no modo antigo ("Rev. XX" na folha de rosto).
+- `FolhaRostoCheck` / `LocalizacaoCodificacaoCheck` — "folha de rosto" = capa até o primeiro título de nível 1 com texto ou a primeira entrada de índice (`DocumentoTexto.FolhaDeRosto`); cabeçalhos não contam.
+
+Revisão de outubro/2026 (detalhes nos comentários de cada classe):
+
+- Extrator: só cabeçalhos/rodapés **exibidos** (titlePg, evenAndOddHeaders, herança); marca d'água VML lida; `mc:Fallback` e caixas de texto sem duplicar texto/imagens; fonte do tema e estilo Normal resolvidos; `outlineLvl 9` = corpo; referências a indicadores inexistentes; quebras antes/depois do texto e `lastRenderedPageBreak`.
+- `CommentInserter`: não quebra mais com documento sem `w14:paraId` ou com paraId repetido; XML de saída dentro do schema.
+- `QuadroCaracteristicas.Find`: entre as tabelas tituladas, prefere a que tem histórico de revisões, título exato, alias mais específico e a última.
+- Iniciais (`4.3.3 c/d`), preenchimento (`4.7`, `4.3.3 e`) e evolução (`PS-018 4.8`) leem a **revisão vigente** do histórico; antes comparavam campos nulos e aprovavam.
+- `ApendiceAnexoCheck`: numerais romanos, ADENDO, fronteira de palavra, sem autorreferência ao quadro.
+- `ContinuidadeTituloConteudoCheck`: títulos pelo nível de estrutura (antes não via nenhum).
+- `TarjaEmissaoCheck`: tarja em cabeçalho oculto só avisa; o histórico de revisões não conta como tarja.
+- `profiles/exemplo.json`: `codificacao.pdaRegex` descrevia a codificação do Cliente (QD5-PDA-…); agora descreve a da PdA (`RN-816-RL-67456`).
 
 ## LLM (semantic checker) — uso atual
 
-Modelo padrão **`gpt-5.6-sol`**, com tiering por regra no profile
-(`semantico.modelo.<Ref>`): Luna para checagens simples de presença de texto, Terra para
-codificação/revisão, Sol para julgamento (ortografia, coerência, capa interna).
+Modelo **`gpt-6.1-sol`** com raciocínio **medium** em todas as regras (`appsettings.json`:
+`OpenAI:Model`, `OpenAI:ReasoningEffort`). O override por regra (`semantico.modelo.<Ref>`)
+continua disponível, mas com ~93% da entrada vindo do cache o ganho de trocar de modelo é
+pequeno. O CLI imprime tokens e custo estimado ao fim de cada revisão.
 
 | Regra | LLM | Função |
 |---|---|---|
@@ -241,8 +256,10 @@ do CL-001 ("quando aplicável", "no caso de DCE…") virariam falso positivo em 
 - ✅ ~~LLM-fallback opcional em `CabecalhosPadronizadosCheck`~~
   (concluído: aceita `ISemanticChecker` que pode reverter Failed → Passed via LLM).
 
-- ✅ ~~Configurar atualização automática do TOC/PAGE no `.docx` revisado~~
-  (concluído: `CommentInserter` define `UpdateFieldsOnOpen=true` nos settings.xml).
+- ❌ ~~Configurar atualização automática do TOC/PAGE no `.docx` revisado~~
+  (revertido: o `UpdateFieldsOnOpen=true` fazia o Word abrir todo documento revisado com a
+  pergunta "Deseja atualizar os campos?". O `CommentInserter` não toca mais no settings.xml;
+  `CommentInserterTests` garante isso).
 - ✅ ~~Validação de parâmetros do profile no momento do load~~
   (concluído: regex válidos e ints positivos em `JsonClientProfileRepository`).
 - ✅ ~~Marcas de erro de TOC/refs cruzadas configuráveis~~

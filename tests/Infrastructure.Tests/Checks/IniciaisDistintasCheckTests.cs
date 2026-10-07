@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -38,7 +38,7 @@ public class IniciaisDistintasCheckTests
     public async Task Passes_when_initials_differ()
     {
         var result = await new IniciaisDistintasCheck().RunAsync(
-            CtxWithCharacteristicsTable("João A. (JAS)", "Maria B. (MBC)"));
+            CtxWithCharacteristicsTable("João A. (JAS)", "Maria B. (MBC)"), TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -46,7 +46,7 @@ public class IniciaisDistintasCheckTests
     public async Task Fails_when_initials_match()
     {
         var result = await new IniciaisDistintasCheck().RunAsync(
-            CtxWithCharacteristicsTable("João A. (JAS)", "João Outro (JAS)"));
+            CtxWithCharacteristicsTable("João A. (JAS)", "João Outro (JAS)"), TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Failed);
         result.Violations.Should().Contain(v => v.Severity == Severity.Error);
     }
@@ -59,7 +59,7 @@ public class IniciaisDistintasCheckTests
         check.Ref.Item.Should().Be("4.3.3 (letra c)");
 
         var result = await check.RunAsync(
-            CtxWithCharacteristicsTable("João A. (JAS)", "Outro (JAS)"));
+            CtxWithCharacteristicsTable("João A. (JAS)", "Outro (JAS)"), TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Failed);
         result.Ref.Padrao.Should().Be(ChecklistPadrao.Pda);
     }
@@ -69,7 +69,7 @@ public class IniciaisDistintasCheckTests
     {
         var check = new IniciaisDistintasCheck(ChecklistPadrao.Pda);
         var result = await check.RunAsync(
-            CtxWithCharacteristicsTable("João A. (JAS)", "Maria B. (MBC)"));
+            CtxWithCharacteristicsTable("João A. (JAS)", "Maria B. (MBC)"), TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -87,7 +87,7 @@ public class IniciaisDistintasCheckTests
             HasPendingTrackChanges: false, HasOpenComments: false, HasUpdatedToc: false);
         var ctx = new DocumentContext("abc.docx", structure,
             new ClientProfile("X", "1.0", new Dictionary<string, string>()));
-        var result = await new IniciaisDistintasCheck().RunAsync(ctx);
+        var result = await new IniciaisDistintasCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Skipped);
     }
 }

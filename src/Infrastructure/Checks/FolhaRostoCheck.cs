@@ -17,8 +17,14 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class FolhaRostoCheck : IRuleCheck
 {
+    // Mês/ano de emissão: mês por extenso ou abreviado seguido do ano ("março de 2026",
+    // "mar/26"), mês/ano numérico com ano de 4 dígitos ("03/2026") ou data completa
+    // ("26/03/26"). A versão anterior aceitava qualquer "número separador número" e casava
+    // "26-04" dentro da codificação e o "7/99" da paginação — a regra nunca falhava.
     private static readonly Regex MesAno = new(
-        @"\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez|janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|\d{1,2})[\s/.-]+(?:de\s+)?\d{2,4}\b",
+        @"\b(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\.?[\s/.-]+(?:de\s+)?(?:\d{4}|\d{2})\b" +
+        @"|\b(?:0?[1-9]|1[0-2])[/.-](?:19|20)\d{2}\b" +
+        @"|\b\d{1,2}/\d{1,2}/(?:\d{4}|\d{2})\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly ISemanticChecker? _semantic;
@@ -37,15 +43,12 @@ public sealed class FolhaRostoCheck : IRuleCheck
 
     public async Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
-        int paragrafos = ctx.Profile.GetInt("folhaRosto.paragrafosIniciais") ?? 60;
-        // Folha de rosto = parágrafos iniciais + primeira tabela (geralmente o quadro
-        // Características que aparece na capa em padrão PdA) + cabeçalhos de seção.
-        var textoParagrafos = CoerenciaRevisoesCheck.TakeFolhaRosto(ctx.Structure.Paragraphs, paragrafos)
-            .Select(p => p.Text);
-        var textoTabelas = ctx.Structure.Tables.Take(2)
-            .SelectMany(t => t.Cells.Select(c => c.Text));
-        var textoHeaders = ctx.Structure.Headers.Select(h => h.Text);
-        var folha = string.Join("\n", textoParagrafos.Concat(textoTabelas).Concat(textoHeaders));
+        // Folha de rosto = capa até o primeiro título (células de tabela incluídas).
+        // Cabeçalhos ficam de fora: repetem código e título em toda página, e era por eles que
+        // a regra passava mesmo com a capa incompleta. O parâmetro do profile só limita
+        // documentos sem título nem índice, onde não há fronteira natural.
+        var limite = ctx.Profile.GetInt("folhaRosto.paragrafosIniciais") ?? 600;
+        var folha = string.Join("\n", DocumentoTexto.FolhaDeRosto(ctx.Structure, limite).Select(p => p.Text));
 
         var contratante = ctx.Profile.Get("folhaRosto.contratante");
         var tituloEsperado = ctx.Profile.Get("folhaRosto.titulo");
@@ -85,8 +88,7 @@ public sealed class FolhaRostoCheck : IRuleCheck
 
             if (!string.IsNullOrWhiteSpace(pdaRx))
             {
-                var pattern = SearchPattern(pdaRx);
-                if (!Regex.IsMatch(folha, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                if (Codificacao.Encontrar(folha, pdaRx) is null)
                 {
                     violations.Add(new Violation(Ref.ToString(), Severity.Error,
                         $"Codificação (padrão {pdaRx}) não localizada na folha de rosto.",
@@ -127,13 +129,5 @@ public sealed class FolhaRostoCheck : IRuleCheck
                    : violations.Any(v => v.Severity == Severity.Error) ? CheckStatus.Failed
                    : CheckStatus.Skipped;
         return new RuleCheckResult(Ref, status, violations, Note: llmNote);
-    }
-
-    private static string SearchPattern(string regex)
-    {
-        var p = regex.Trim();
-        if (p.StartsWith('^')) p = p[1..];
-        if (p.EndsWith('$')) p = p[..^1];
-        return p + @"(?:-\d+)?";
     }
 }

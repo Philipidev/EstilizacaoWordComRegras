@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Core.Profile;
@@ -28,7 +28,7 @@ public class IndiceAtualizadoCheckTests
     [Fact]
     public async Task Passes_when_toc_present_and_no_error_marks()
     {
-        var r = await new IndiceAtualizadoCheck().RunAsync(Ctx(hasToc: true, "1. Introdução", "Conteúdo"));
+        var r = await new IndiceAtualizadoCheck().RunAsync(Ctx(hasToc: true, "1. Introdução", "Conteúdo"), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -36,14 +36,14 @@ public class IndiceAtualizadoCheckTests
     public async Task Fails_when_toc_has_error_marks()
     {
         var r = await new IndiceAtualizadoCheck().RunAsync(
-            Ctx(hasToc: true, "Sumário", "Erro! Indicador não definido."));
+            Ctx(hasToc: true, "Sumário", "Erro! Indicador não definido."), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
     [Fact]
     public async Task Warns_when_toc_absent()
     {
-        var r = await new IndiceAtualizadoCheck().RunAsync(Ctx(hasToc: false, "Conteúdo"));
+        var r = await new IndiceAtualizadoCheck().RunAsync(Ctx(hasToc: false, "Conteúdo"), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Skipped);
         r.Violations.Should().HaveCount(1);
         r.Violations[0].Severity.Should().Be(Severity.Warning);

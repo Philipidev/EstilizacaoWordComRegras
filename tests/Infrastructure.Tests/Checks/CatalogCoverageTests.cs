@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Infrastructure.Checks;
 using WordComplianceValidator.Infrastructure.Excel;
@@ -46,17 +46,16 @@ public class CatalogCoverageTests
             throw new NotSupportedException("Auditoria de catálogo não executa checks.");
     }
 
-    private static IReadOnlyList<ChecklistEntry> Catalogo() =>
+    private static Task<IReadOnlyList<ChecklistEntry>> CatalogoAsync() =>
         new ExcelChecklistRepository()
-            .LoadAsync(RepoFile("templates", "checklists", "CL-001-CL00100.xlsx"))
-            .GetAwaiter().GetResult();
+            .LoadAsync(RepoFile("templates", "checklists", "CL-001-CL00100.xlsx"), TestContext.Current.CancellationToken);
 
     [Fact]
-    public void Toda_entrada_do_CL001_tem_destino_explicito()
+    public async Task Toda_entrada_do_CL001_tem_destino_explicito()
     {
-        var catalogo = Catalogo();
-        var profile = new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json")).GetAwaiter().GetResult();
+        var catalogo = await CatalogoAsync();
+        var profile = await new JsonClientProfileRepository()
+            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
 
         var dedicados = CheckRegistry.Deterministicos(SemanticStub.Instancia)
             .Select(c => c.Ref.ToString())
@@ -77,9 +76,9 @@ public class CatalogCoverageTests
     }
 
     [Fact]
-    public void Todo_check_registrado_corresponde_a_uma_entrada_real_do_CL001()
+    public async Task Todo_check_registrado_corresponde_a_uma_entrada_real_do_CL001()
     {
-        var refsDoCatalogo = Catalogo().Select(e => e.Ref.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var refsDoCatalogo = (await CatalogoAsync()).Select(e => e.Ref.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var orfaos = CheckRegistry.Deterministicos(SemanticStub.Instancia)
             .Select(c => c.Ref.ToString())
@@ -92,11 +91,11 @@ public class CatalogCoverageTests
     }
 
     [Fact]
-    public void Allow_list_semantica_do_profile_referencia_apenas_refs_existentes()
+    public async Task Allow_list_semantica_do_profile_referencia_apenas_refs_existentes()
     {
-        var catalogo = Catalogo();
-        var profile = new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json")).GetAwaiter().GetResult();
+        var catalogo = await CatalogoAsync();
+        var profile = await new JsonClientProfileRepository()
+            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
 
         var habilitadas = (profile.Get("semantico.regrasHabilitadas") ?? "")
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -108,12 +107,12 @@ public class CatalogCoverageTests
     }
 
     [Fact]
-    public void Nenhuma_regra_do_PS005_consome_tokens_semanticos()
+    public async Task Nenhuma_regra_do_PS005_consome_tokens_semanticos()
     {
-        var profile = new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json")).GetAwaiter().GetResult();
+        var profile = await new JsonClientProfileRepository()
+            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
 
-        var ps005 = Catalogo().Where(e => e.Ref.Ps.Equals("PS-005", StringComparison.OrdinalIgnoreCase)).ToList();
+        var ps005 = (await CatalogoAsync()).Where(e => e.Ref.Ps.Equals("PS-005", StringComparison.OrdinalIgnoreCase)).ToList();
 
         ps005.Should().NotBeEmpty();
         ps005.Should().OnlyContain(e => !SemanticCheckFactory.Habilitada(e.Ref, profile),

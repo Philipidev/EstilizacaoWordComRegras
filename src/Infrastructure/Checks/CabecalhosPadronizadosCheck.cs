@@ -29,12 +29,13 @@ public sealed class CabecalhosPadronizadosCheck : IRuleCheck
 
     private readonly ISemanticChecker? _semantic;
 
-    public CabecalhosPadronizadosCheck(ISemanticChecker? semantic = null)
+    public CabecalhosPadronizadosCheck(ISemanticChecker? semantic = null, ChecklistPadrao padrao = ChecklistPadrao.Cliente)
     {
         _semantic = semantic;
+        Ref = new ChecklistRef("PS-002", "4.3.3 (letra g)", padrao);
     }
 
-    public ChecklistRef Ref { get; } = new("PS-002", "4.3.3 (letra g)", ChecklistPadrao.Cliente);
+    public ChecklistRef Ref { get; }
 
     public async Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {

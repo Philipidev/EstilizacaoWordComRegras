@@ -10,11 +10,77 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public static class QuadroCaracteristicas
 {
-    /// <summary>Uma entrada do histórico de revisões do quadro.</summary>
-    public sealed record EntradaDeRevisao(string Revisao, string? Data, string? Descricao);
+    /// <summary>
+    /// Uma entrada de um histórico de revisões. <see cref="Colunas"/> traz todas as células
+    /// da linha, indexadas pelo texto normalizado do cabeçalho da coluna.
+    /// </summary>
+    public sealed record EntradaDeRevisao(string Revisao, string? Data, string? Descricao)
+    {
+        public IReadOnlyDictionary<string, string> Colunas { get; init; } =
+            new Dictionary<string, string>();
 
+        /// <summary>Valor da primeira coluna cujo cabeçalho normalizado contém algum dos termos.</summary>
+        public string? Coluna(IEnumerable<string> termos)
+        {
+            foreach (var termo in termos.Select(DocumentoTexto.Normalizar).Where(t => t.Length > 0))
+            {
+                var hit = Colunas.FirstOrDefault(kv => kv.Key.Contains(termo, StringComparison.Ordinal));
+                if (hit.Key is not null) return hit.Value;
+            }
+            return null;
+        }
+
+        public DateOnly? DataLida => LerData(Data);
+    }
+
+    // PdA: 0A–0Z, 00–99. Cliente: 0, 1, 2… — a folha índice do Cliente usa um dígito só.
     private static readonly System.Text.RegularExpressions.Regex TokenRevisao =
-        new(@"^(0[A-Za-z]|\d{2})$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"^(0[A-Za-z]|\d{1,2})$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>"11/03/26" e "11/03/2026" viram a mesma data; o resto, null.</summary>
+    public static DateOnly? LerData(string? texto)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(texto ?? string.Empty, @"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b");
+        if (!m.Success) return null;
+        var ano = int.Parse(m.Groups[3].Value);
+        if (ano < 100) ano += 2000;
+        try { return new DateOnly(ano, int.Parse(m.Groups[2].Value), int.Parse(m.Groups[1].Value)); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
+
+    /// <summary>
+    /// Ordem de uma revisão PdA: 0A &lt; 0B &lt; … &lt; 0Z &lt; 00 &lt; 01 &lt; … Null para o que não é
+    /// código PdA.
+    /// </summary>
+    public static int? OrdemDaRevisaoPda(string? revisao)
+    {
+        var r = (revisao ?? string.Empty).Trim().ToUpperInvariant();
+        if (r.Length == 2 && r[0] == '0' && char.IsAsciiLetterUpper(r[1])) return r[1] - 'A';
+        if (r.Length == 2 && int.TryParse(r, out var n)) return 100 + n;
+        return null;
+    }
+
+    /// <summary>
+    /// Histórico de revisões da folha índice do Cliente: a primeira tabela da folha de rosto
+    /// (fora o quadro) que tem cabeçalho com revisão e data.
+    /// </summary>
+    public static IReadOnlyList<EntradaDeRevisao> HistoricoDaFolhaDeRosto(DocumentStructure doc, ExtractedTable? quadro)
+    {
+        var tabelas = DocumentoTexto.FolhaDeRosto(doc)
+            .Select(p => p.TableIndex)
+            .OfType<int>()
+            .Distinct()
+            .Where(i => quadro is null || i != quadro.Index);
+
+        foreach (var indice in tabelas)
+        {
+            var tabela = doc.Tables.FirstOrDefault(t => t.Index == indice);
+            if (tabela is null) continue;
+            var historico = HistoricoDeRevisoes(tabela);
+            if (historico.Count > 0) return historico;
+        }
+        return Array.Empty<EntradaDeRevisao>();
+    }
 
     private static readonly System.Text.RegularExpressions.Regex DataCurta =
         new(@"^\d{1,2}/\d{1,2}/\d{2,4}$", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -45,18 +111,26 @@ public static class QuadroCaracteristicas
             if (colRev is null || colData is null) continue;
 
             var colDescricao = ColunaCom(cabecalho, "descri");
+            var nomes = cabecalho
+                .Where(c => DocumentoTexto.Normalizar(c.Text).Length > 0)
+                .GroupBy(c => c.Column)
+                .ToDictionary(g => g.Key, g => DocumentoTexto.Normalizar(g.First().Text));
             var entradas = new List<EntradaDeRevisao>();
 
             for (var r = i + 1; r < linhas.Count; r++)
             {
-                var celulas = linhas[r].ToDictionary(c => c.Column, c => c.Text.Trim());
+                var celulas = linhas[r].GroupBy(c => c.Column).ToDictionary(g => g.Key, g => g.First().Text.Trim());
                 if (!celulas.TryGetValue(colRev.Value, out var rev) || !TokenRevisao.IsMatch(rev)) break;
 
                 celulas.TryGetValue(colData.Value, out var data);
                 string? descricao = null;
                 if (colDescricao is { } cd) celulas.TryGetValue(cd, out descricao);
 
-                entradas.Add(new EntradaDeRevisao(rev.ToUpperInvariant(), data, descricao));
+                var colunas = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (coluna, nome) in nomes)
+                    colunas.TryAdd(nome, celulas.GetValueOrDefault(coluna) ?? string.Empty);
+
+                entradas.Add(new EntradaDeRevisao(rev.ToUpperInvariant(), data, descricao) { Colunas = colunas });
             }
 
             if (entradas.Count > 0) return entradas;
@@ -146,25 +220,46 @@ public static class QuadroCaracteristicas
         return maior;
     }
 
+    /// <summary>
+    /// Localiza o quadro entre as tabelas cujo título casa algum alias.
+    /// <para>
+    /// Antes valia a primeira tabela do documento com o alias na primeira linha — e o alias
+    /// genérico "Características" casa "Características geométricas da barragem", tabela que
+    /// num relatório vem muito antes do quadro (que fica no fim). Esse quadro errado gerava
+    /// "campo obrigatório ausente" em série e escondia as iniciais do quadro verdadeiro. Agora,
+    /// entre os candidatos, vence quem tem histórico de revisões (assinatura estrutural do
+    /// quadro), depois o título igual ao alias, depois o alias mais específico e, por fim, a
+    /// última tabela.
+    /// </para>
+    /// </summary>
     public static ExtractedTable? Find(DocumentStructure doc, IEnumerable<string> tituloAliases)
     {
-        var aliases = tituloAliases.Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
-        foreach (var t in doc.Tables)
-        {
-            var firstRow = t.FirstRowText ?? string.Empty;
-            if (aliases.Any(a => firstRow.Contains(a, StringComparison.OrdinalIgnoreCase)))
-                return t;
-        }
+        var aliases = tituloAliases
+            .Select(DocumentoTexto.Normalizar)
+            .Where(a => a.Length > 0)
+            .Distinct()
+            .ToList();
+        if (aliases.Count == 0) return null;
 
-        // Fallback: documents may place the title outside the first row, but this
-        // should only run after titled tables had a chance to match.
-        foreach (var t in doc.Tables)
-        {
-            if (aliases.Any(a => t.Cells.Any(c => c.Text.Contains(a, StringComparison.OrdinalIgnoreCase))))
-                return t;
-        }
+        return Melhor(doc.Tables.Select(t => (Tabela: t, Titulo: DocumentoTexto.Normalizar(t.FirstRowText))))
+            // Documentos que põem o título fora da primeira linha: só depois que as tabelas
+            // tituladas tiveram a chance de casar.
+            ?? Melhor(doc.Tables.Select(t => (Tabela: t,
+                   Titulo: DocumentoTexto.Normalizar(string.Join(" ", t.Cells.Select(c => c.Text))))));
 
-        return null;
+        ExtractedTable? Melhor(IEnumerable<(ExtractedTable Tabela, string Titulo)> candidatas) =>
+            candidatas
+                .Select(c => (c.Tabela, c.Titulo,
+                              Alias: aliases.Where(a => c.Titulo.Contains(a, StringComparison.Ordinal))
+                                            .OrderByDescending(a => a.Length)
+                                            .FirstOrDefault()))
+                .Where(c => c.Alias is not null)
+                .OrderByDescending(c => HistoricoDeRevisoes(c.Tabela).Count > 0)
+                .ThenByDescending(c => aliases.Contains(c.Titulo))
+                .ThenByDescending(c => c.Alias!.Length)
+                .ThenByDescending(c => c.Tabela.Index)
+                .Select(c => c.Tabela)
+                .FirstOrDefault();
     }
 
     public static IReadOnlyDictionary<string, string> FieldsByLabel(ExtractedTable table)

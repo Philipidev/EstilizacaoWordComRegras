@@ -15,9 +15,12 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class ApendiceAnexoCheck : IRuleCheck
 {
+    // Palavra-chave sem distinção de caixa; identificador em maiúsculas (romano, letra ou
+    // número). Antes só letra única ou número: "ANEXO II", "ANEXO IV"… viravam "Anexo I" e
+    // "Anexo V" ou sumiam, e com IgnoreCase no identificador "anexo a planilha" virava "Anexo A".
     private static readonly Regex TituloApendiceAnexo = new(
-        @"^\s*(ap[êe]ndice|anexo)\s+([A-Z]|\d+)\b",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        @"^\s*(?i:(ap[êe]ndice|anexo|adendo))\s+([IVXLC]{1,6}|[A-Z]|\d{1,3})(?=$|[\s\-–—:.)])",
+        RegexOptions.Compiled);
 
     public ApendiceAnexoCheck(ChecklistPadrao padrao = ChecklistPadrao.Cliente, string item = "4.3.8")
     {
@@ -28,7 +31,14 @@ public sealed class ApendiceAnexoCheck : IRuleCheck
 
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
+        var titulosAlias = DocumentoTexto.Lista(ctx.Profile.Get("quadroCaracteristicas.aliases"),
+            "Características do Documento|Quadro de Características|Características");
+        var quadro = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
+
+        // As linhas do próprio quadro não contam como apêndice/anexo do documento: lidas como
+        // títulos, elas se referenciavam a si mesmas e qualquer anexo listado "existia".
         var titulos = ctx.Structure.Paragraphs
+            .Where(p => quadro is null || p.TableIndex != quadro.Index)
             .Where(p => !string.IsNullOrWhiteSpace(p.Text) && TituloApendiceAnexo.IsMatch(p.Text))
             .GroupBy(p => Rotulo(p.Text))
             .Select(g => (Rotulo: g.Key, Paragrafo: g.First()))
@@ -41,9 +51,6 @@ public sealed class ApendiceAnexoCheck : IRuleCheck
                 Note: "Documento não possui apêndice ou anexo."));
         }
 
-        var titulosAlias = DocumentoTexto.Lista(ctx.Profile.Get("quadroCaracteristicas.aliases"),
-            "Características do Documento|Quadro de Características|Características");
-        var quadro = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
         if (quadro is null)
         {
             return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,
@@ -54,8 +61,9 @@ public sealed class ApendiceAnexoCheck : IRuleCheck
         var quadroNorm = DocumentoTexto.Normalizar(
             string.Join(" ", quadro.Cells.Select(c => c.Text)));
 
+        // Fronteira de palavra: "anexo i" não pode casar dentro de "anexo ii".
         var naoReferenciados = titulos
-            .Where(t => !quadroNorm.Contains(DocumentoTexto.Normalizar(t.Rotulo), StringComparison.Ordinal))
+            .Where(t => !Regex.IsMatch(quadroNorm, $@"\b{Regex.Escape(DocumentoTexto.Normalizar(t.Rotulo))}\b"))
             .ToList();
 
         var violations = naoReferenciados.Select(t => new Violation(

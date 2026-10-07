@@ -34,13 +34,55 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
         _orcamento = orcamentoCaracteres;
     }
 
+    /// <summary>
+    /// Instância compartilhada pelo motor genérico e pelos checks dedicados que consultam o
+    /// LLM. Um pacote idêntico em todas as chamadas é o que faz o cache de prompt acertar.
+    /// </summary>
+    public static DefaultEvidenceSelector Compartilhado { get; } = new();
+
     public string Build(DocumentContext ctx, ChecklistEntry entry) =>
         _cache.GetValue(ctx, Montar);
 
+    /// <summary>
+    /// Como ler o pacote. Vai junto da evidência — e não na instrução de cada regra — porque é
+    /// igual para todas as regras e fica no trecho reaproveitado pelo cache de prompt.
+    /// <para>
+    /// O primeiro parágrafo existe por um falso positivo recorrente: o avaliador comparava a
+    /// revisão do Cliente da folha índice (0, 1, 2) com a revisão PdA do quadro (0A, 0B, 00) e
+    /// acusava divergência em documentos conformes, nos quais as emissões casavam por data.
+    /// </para>
+    /// </summary>
+    private const string ConvencoesDeLeitura =
+        """
+        ## Como ler este pacote
+        - Revisões: a PdA (projetista) e o Cliente numeram revisões cada um no seu sistema — a PdA
+          usa 0A, 0B… na etapa de comentários e 00, 01… depois da emissão final; o Cliente costuma
+          usar números (0, 1, 2…) com uma letra de tipo de emissão, cuja legenda aparece na própria
+          folha. A revisão do Cliente também pode aparecer como sufixo da codificação do Cliente
+          (ex.: "…-RT-2" = revisão 2). Códigos diferentes NÃO são divergência por si: a
+          correspondência entre as duas numerações se verifica pela ordem, pela data e pela
+          descrição de cada emissão. Ao apontar falta de correspondência, cite as datas.
+        - Cabeçalhos e rodapés listados são apenas os que o Word exibe; partes gravadas no arquivo
+          mas nunca exibidas foram omitidas. Seções são numeradas a partir de 1.
+        - "[imagem]" marca conteúdo gráfico (logotipo, assinatura digitalizada): o campo não está
+          em branco. Linhas de tabela vêm com as colunas separadas por "|".
+        - O corpo do documento é uma amostra, não o texto integral: ausência de algo na amostra não
+          prova ausência no documento.
+
+        """;
+
     private string Montar(DocumentContext ctx)
     {
-        var doc = ctx.Structure;
         var sb = new StringBuilder();
+        MontarRetrato(sb, ctx);
+        // Inserida depois para não consumir o orçamento da amostra do corpo.
+        sb.Insert(0, ConvencoesDeLeitura);
+        return sb.ToString();
+    }
+
+    private void MontarRetrato(StringBuilder sb, DocumentContext ctx)
+    {
+        var doc = ctx.Structure;
 
         sb.AppendLine("## Metadados");
         sb.AppendLine($"- Arquivo: {doc.FileName}");
@@ -59,8 +101,6 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
         AppendIndice(sb, doc);
         AppendTabelas(sb, doc);
         AppendAmostraCorpo(sb, doc, RestanteOrcamento(sb));
-
-        return sb.ToString();
     }
 
     private int RestanteOrcamento(StringBuilder sb) => Math.Max(0, _orcamento - sb.Length);
@@ -72,7 +112,7 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
         // cliente sozinha ocupa ~200 parágrafos de célula, e a folha de rosto — onde estão
         // código, título e cliente — vem depois dela. O avaliador então concluía, corretamente
         // para o que recebia e erradamente para o documento, que esses campos não existiam.
-        var cabeca = doc.Paragraphs.TakeWhile(p => p.OutlineLevel is not 0).ToList();
+        var cabeca = DocumentoTexto.FolhaDeRosto(doc);
 
         if (cabeca.Count == 0) return;
         sb.AppendLine("## Folha de rosto / capa (conteúdo anterior ao primeiro título)");
@@ -206,7 +246,7 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
     /// códigos de revisão. O cabeçalho do histórico ("Rev. | Data | Emissor | …") não casa,
     /// porque suas demais células são palavras — e ele precisa continuar saindo inteiro.
     /// </summary>
-    private static bool EhCabecalhoDeGrade(IReadOnlyList<ExtractedTableCell> celulas)
+    internal static bool EhCabecalhoDeGrade(IReadOnlyList<ExtractedTableCell> celulas)
     {
         if (celulas.Count < 4) return false;
 
@@ -275,14 +315,38 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
     private static void AppendCabecalhosRodapes(StringBuilder sb, DocumentStructure doc)
     {
         if (doc.Headers.Count == 0 && doc.Footers.Count == 0) return;
-        sb.AppendLine("## Cabeçalhos e rodapés");
-        foreach (var h in doc.Headers)
-            sb.AppendLine($"- [cabeçalho tipo={h.Kind} seção={h.SectionIndex} imagens={h.ImageCount} " +
-                          $"campos={string.Join("/", h.FieldCodes.Distinct())}] {Resumo(h.Text, 300)}");
-        foreach (var f in doc.Footers)
-            sb.AppendLine($"- [rodapé tipo={f.Kind} seção={f.SectionIndex} imagens={f.ImageCount} " +
-                          $"campos={string.Join("/", f.FieldCodes.Distinct())}] {Resumo(f.Text, 300)}");
+        sb.AppendLine("## Cabeçalhos e rodapés exibidos");
+        AppendPartes(sb, "cabeçalho", doc.Headers);
+        AppendPartes(sb, "rodapé", doc.Footers);
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Partes iguais são agrupadas numa linha com as seções que as usam. Relatórios reais
+    /// repetem o mesmo cabeçalho em quase todas as seções; listado parte a parte, ele ocupava
+    /// boa parte do pacote e escondia a única seção que destoava.
+    /// </summary>
+    private static void AppendPartes(StringBuilder sb, string rotulo, IReadOnlyList<ExtractedHeaderFooter> partes)
+    {
+        var grupos = partes
+            .GroupBy(p => (p.Kind, Texto: Resumo(p.Text, 300), p.ImageCount,
+                           Campos: string.Join("/", p.FieldCodes.Distinct())))
+            .Select(g => (g.Key, Secoes: g.Select(p => p.SectionIndex).OfType<int>().Order().ToList()))
+            .OrderBy(g => g.Secoes.Count > 0 ? g.Secoes[0] : int.MaxValue)
+            .ThenBy(g => g.Key.Kind, StringComparer.Ordinal);
+
+        foreach (var (chave, secoes) in grupos)
+        {
+            var onde = secoes.Count switch
+            {
+                0 => "seção ?",
+                1 => $"seção {secoes[0] + 1}",
+                _ => $"seções {string.Join(", ", secoes.Select(s => s + 1))}"
+            };
+            var texto = chave.Texto.Length == 0 ? "(sem texto)" : chave.Texto;
+            sb.AppendLine($"- [{rotulo} tipo={chave.Kind} {onde} imagens={chave.ImageCount} " +
+                          $"campos={chave.Campos}] {texto}");
+        }
     }
 
     private static void AppendEstruturaTitulos(StringBuilder sb, DocumentStructure doc)

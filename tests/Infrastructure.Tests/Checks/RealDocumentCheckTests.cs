@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Core.Profile;
@@ -16,7 +16,10 @@ public class RealDocumentCheckTests
             ["quadroCaracteristicas.aliases"] = "Características do Documento|Características Técnicas|Quadro de Características|Características",
             ["iniciais.rotuloElaborador"] = "Elaborado por|Emissor|Elaborador",
             ["iniciais.rotuloVerificador"] = "Verificado por|Verificador|Verificador Técnico",
-            ["codificacao.pdaRegex"] = "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
+            // Codificação PdA: 15 caracteres (PS-018 4.4), ex.: RN-816-RL-67456; com o sufixo de
+            // revisão, 18 (RN-816-RL-67456-00). O "QD5-PDA-26-04-095-RT" é a codificação do
+            // Cliente (MRN) — o regex antigo, rotulado PdA, casava justamente ela.
+            ["codificacao.pdaRegex"] = "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$",
             ["codificacao.clienteRegex"] = "^[A-Z0-9]{2,4}-[A-Z]{2,4}-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
             ["codificacao.aliasesRotulo"] = "Codificação PdA|Codificação|Código do Documento|Documento|Código"
         };
@@ -67,7 +70,7 @@ public class RealDocumentCheckTests
 
         foreach (var check in checks)
         {
-            var result = await check.RunAsync(ctx);
+            var result = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
             var details = $"{fileName} - {result.Ref}: " +
                           string.Join(" | ", result.Violations.Select(v => $"{v.Severity}: {v.Message}"));
 
@@ -83,33 +86,70 @@ public class RealDocumentCheckTests
     /// Não conformidades reais dos documentos de referência.
     /// <para>
     /// O corpus prova ausência de falso positivo, o que só vale enquanto os documentos forem
-    /// de fato conformes. O RN-816 não é: emitido na revisão 00 ("Conforme construído"), ele
-    /// carrega a tarja "EMISSÃO PARA COMENTÁRIOS DO CLIENTE" nos cabeçalhos de primeira página
-    /// e de páginas pares da seção 6, resíduo das revisões 0A/0B. Isso passou despercebido
-    /// enquanto nenhum check implementado conseguia enxergar — o de tarja lia a revisão como
-    /// "0B" e aprovava.
+    /// de fato conformes. Cada entrada aqui é dívida do documento, não do validador, e precisa
+    /// de um teste próprio que fixe o achado para que a exceção não vire um buraco silencioso.
     /// </para>
-    /// Cada entrada aqui é dívida do documento, não do validador. O teste
-    /// <see cref="Tarja_obsoleta_do_RN816_e_detectada"/> fixa o achado para que a exceção não
-    /// vire um buraco silencioso.
+    /// O RN-816 já constou aqui pela tarja de comentários "remanescente" — que está só em
+    /// cabeçalhos 'first'/'even' que o Word não exibe (ver
+    /// <see cref="Tarja_do_RN816_so_existe_em_cabecalho_que_o_Word_nao_exibe"/>).
     /// </summary>
     private static readonly HashSet<(string Arquivo, string Regra)> DefeitosConhecidos =
     [
-        ("RN-816-RL-67456-00.docx", "PS-024:4.1.2:Cliente")
+        ("RN-816-RL-67456-00.docx", "PS-002:4.3.3 (letra h):Cliente")
     ];
 
+    /// <summary>
+    /// O RN-816 tem quatro campos REF vazios — sem resultado, logo depois de referências
+    /// válidas a "Figura 77", "88", "91" e "92" — cujos indicadores de destino não existem em
+    /// parte nenhuma do pacote. Hoje não aparecem no texto; ao atualizar os campos, o Word
+    /// escreve "Erro! Indicador não definido" nesses pontos.
+    /// </summary>
     [Fact]
-    public async Task Tarja_obsoleta_do_RN816_e_detectada()
+    public async Task Referencias_cruzadas_quebradas_do_RN816_sao_detectadas()
+    {
+        var ctx = ReferenceDocumentContext("RN-816-RL-67456-00.docx");
+
+        var result = await new ReferenciasCruzadasCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
+
+        result.Status.Should().Be(CheckStatus.Failed);
+        ctx.Structure.BrokenReferences.Select(r => r.Bookmark).Should().BeEquivalentTo(
+            "_Ref223474267", "_Ref222749372", "_Ref222920728", "_Ref222920729");
+
+        // São campos REF vazios (begin/instr/end, sem resultado) logo depois de uma referência
+        // válida: invisíveis hoje, viram "Erro! Indicador não definido" ao atualizar os campos.
+        ctx.Structure.BrokenReferences.Should().OnlyContain(r => r.DisplayedText == null);
+        ctx.Structure.BrokenReferences.Should().Contain(r => r.TextBefore.EndsWith("A Figura 77"));
+
+        // A mensagem diz onde está o campo, não o nome interno do indicador.
+        result.Violations.Should().Contain(v => v.Message.Contains("logo depois de «A Figura 77»"));
+        result.Violations.Should().NotContain(v => v.Message.Contains("_Ref"));
+    }
+
+    /// <summary>
+    /// O RN-816 (revisão 00) guarda a tarja "EMISSÃO PARA COMENTÁRIOS DO CLIENTE" nos
+    /// cabeçalhos de primeira página e de páginas pares de várias seções, mas nenhuma seção
+    /// ativa "primeira página diferente" e o documento não usa "pares e ímpares diferentes":
+    /// a tarja não aparece em página nenhuma. Isso era reprovado como erro — e o mesmo resíduo
+    /// alimentava quatro achados semânticos sobre "status de emissão incoerente".
+    /// </summary>
+    [Fact]
+    public async Task Tarja_do_RN816_so_existe_em_cabecalho_que_o_Word_nao_exibe()
     {
         var ctx = ReferenceDocumentContext("RN-816-RL-67456-00.docx");
         var check = new TarjaEmissaoCheck(
             WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.1.2");
 
-        var result = await check.RunAsync(ctx);
+        var result = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
 
-        result.Status.Should().Be(CheckStatus.Failed);
-        result.Violations.Should().ContainSingle()
-            .Which.Message.Should().Contain("00").And.Contain("Comentários do Cliente");
+        result.Status.Should().Be(CheckStatus.Skipped);
+        var aviso = result.Violations.Should().ContainSingle().Which;
+        aviso.Severity.Should().Be(Severity.Warning);
+        aviso.Message.Should().Contain("não aparece").And.Contain("Comentários do Cliente");
+
+        ctx.Structure.Headers.Should().OnlyContain(h => h.Kind == "default",
+            "sem titlePg e sem evenAndOddHeaders só o cabeçalho padrão é exibido");
+        ctx.Structure.HiddenHeaderFooters.Should().Contain(h =>
+            DocumentoTexto.Normalizar(h.Text).Contains("emissao para comentarios do cliente"));
     }
 
     [Fact]

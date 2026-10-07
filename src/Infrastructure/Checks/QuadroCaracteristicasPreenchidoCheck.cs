@@ -60,18 +60,21 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
                 }));
         }
 
-        var byLabel = QuadroCaracteristicas.FieldsByLabel(table);
+        var vigente = QuadroCaracteristicas.HistoricoDeRevisoes(table).LastOrDefault();
 
         var violations = new List<Violation>();
         foreach (var campo in camposObrigatorios)
         {
             var aliases = AliasesFor(ctx, campo);
-            if (CampoPreenchido(table, byLabel, aliases)) continue;
+            if (CampoPreenchido(ctx, table, campo, aliases, vigente)) continue;
 
+            var onde = vigente?.Coluna(aliases) is not null
+                ? $"na linha da revisão vigente ({vigente.Revisao}) do histórico do quadro"
+                : "no quadro 'Características do Documento'";
             violations.Add(new Violation(
                 RuleId: Ref.ToString(),
                 Severity: Severity.Error,
-                Message: $"Campo obrigatório '{campo}' está ausente ou vazio no quadro 'Características do Documento'.",
+                Message: $"Campo obrigatório '{campo}' está ausente ou vazio {onde}.",
                 Location: new ViolationLocation(null, null, null, "Quadro Características")));
         }
 
@@ -100,58 +103,126 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         if (secao is null)
             return (null, "Seção do quadro não identificada; numeração da página não verificada.");
 
-        // SectionIndex de um header/footer é a primeira seção que o referencia. Se a seção do
-        // quadro reaproveitar um header de seção anterior, esta checagem se cala em vez de
-        // acusar — falso negativo é preferível a falso positivo numa regra de forma.
-        var numerados = ctx.Structure.Headers.Concat(ctx.Structure.Footers)
-            .Where(hf => hf.SectionIndex == secao && TemCampoPagina(hf))
-            .ToList();
+        // O que a seção do quadro exibe, herança incluída: uma seção que não declara cabeçalho
+        // usa o da anterior, e antes isso passava como "sem numeração". Quando o quadro abre a
+        // seção e ela tem "primeira página diferente", vale o cabeçalho da primeira página.
+        var secaoInfo = ctx.Structure.Sections.FirstOrDefault(s => s.Index == secao);
+        IEnumerable<ExtractedHeaderFooter> partes;
+        if (secaoInfo is not null && (secaoInfo.DisplayedHeaderFooters.Count > 0 || secaoInfo.FirstPageHeaderFooters.Count > 0))
+        {
+            var primeiroDaSecao = ctx.Structure.Paragraphs.FirstOrDefault(p => p.SectionIndex == secao);
+            var quadroAbreASecao = primeiroDaSecao?.TableIndex == table.Index;
+            partes = secaoInfo.TitlePage && quadroAbreASecao
+                ? secaoInfo.FirstPageHeaderFooters
+                : secaoInfo.DisplayedHeaderFooters;
+        }
+        else
+        {
+            // Estrutura sem o mapa por seção (montada à mão): só as partes declaradas na seção.
+            partes = ctx.Structure.Headers.Concat(ctx.Structure.Footers).Where(hf => hf.SectionIndex == secao);
+        }
+        var numerados = partes.Where(TemCampoPagina).ToList();
 
         if (numerados.Count == 0)
-            return (null, $"Página do quadro (seção {secao}) sem campo de numeração.");
+            // "como exigido": no --verbose esta nota aparece ao lado de um ✓ e, sozinha,
+            // "sem campo de numeração" soava como defeito.
+            return (null, $"Página do quadro (seção {secao + 1}) sem numeração, como exigido.");
 
         return (new Violation(
             RuleId: Ref.ToString(),
             Severity: Severity.Error,
             Message: "A página do quadro 'Características do Documento' contém numeração de páginas.",
             Location: new ViolationLocation(null, numerados[0].Kind, secao, "Quadro Características")),
-            $"Página do quadro (seção {secao}) com campo de numeração em {numerados.Count} cabeçalho/rodapé.");
+            $"Página do quadro (seção {secao + 1}) com campo de numeração em {numerados.Count} cabeçalho/rodapé.");
     }
 
     private static bool TemCampoPagina(ExtractedHeaderFooter hf) =>
         hf.FieldCodes.Any(c => c.Equals("PAGE", StringComparison.OrdinalIgnoreCase)
                             || c.Equals("NUMPAGES", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Um campo do quadro está preenchido? Tenta, em ordem, as formas como os formulários reais
+    /// guardam o valor:
+    /// <list type="number">
+    /// <item>coluna do histórico de revisões — o valor que vale é o da revisão <b>vigente</b>
+    /// (última linha), não "qualquer linha preenchida";</item>
+    /// <item>codificação: um código no padrão do profile em qualquer célula do quadro;</item>
+    /// <item>"Rótulo: valor" na mesma célula ("Título do Documento: UP-26…");</item>
+    /// <item>rótulo numa célula e valor à direita, na mesma linha;</item>
+    /// <item>linha de cabeçalho ("Nome do Aprovador | Assinatura do Aprovador") com os valores
+    /// na linha de baixo, mesma coluna.</item>
+    /// </list>
+    /// A versão anterior casava rótulos por substring: "Revisão" era satisfeito pela linha "Rev."
+    /// da grade de folhas, "Aprovado por" pelo par "Nome do Aprovador → Assinatura do Aprovador"
+    /// (o rótulo vizinho contava como valor) e "Codificação" por "ADENDO I - Documentos…".
+    /// Título e aprovador vazios passavam.
+    /// </summary>
     private static bool CampoPreenchido(
+        DocumentContext ctx,
         ExtractedTable table,
-        IReadOnlyDictionary<string, string> byLabel,
-        IReadOnlyList<string> aliases)
+        string campo,
+        IReadOnlyList<string> aliases,
+        QuadroCaracteristicas.EntradaDeRevisao? vigente)
     {
-        // 1) Layout linha: qualquer alias localizado como rótulo em FieldsByLabel.
-        var rotuloEncontrado = false;
-        foreach (var alias in aliases)
-        {
-            var match = byLabel.FirstOrDefault(kv =>
-                kv.Key.Contains(alias, StringComparison.OrdinalIgnoreCase));
-            if (string.IsNullOrEmpty(match.Key)) continue;
+        if (vigente?.Coluna(aliases) is { } doHistorico)
+            return !string.IsNullOrWhiteSpace(doHistorico);
 
-            rotuloEncontrado = true;
-            if (!string.IsNullOrWhiteSpace(match.Value))
-                return true;
+        var celulasTexto = table.Cells.Select(c => c.Text).ToList();
+        if (DocumentoTexto.Normalizar(campo).StartsWith("codific", StringComparison.Ordinal)
+            && (Codificacao.EncontrarEmQualquer(celulasTexto, ctx.Profile.Get("codificacao.pdaRegex")) is not null
+                || Codificacao.EncontrarEmQualquer(celulasTexto, ctx.Profile.Get("codificacao.clienteRegex")) is not null))
+            return true;
+
+        var aliasesNorm = aliases.Select(DocumentoTexto.Normalizar).Where(a => a.Length > 0).ToList();
+        bool EhRotulo(ExtractedTableCell c)
+        {
+            var norm = DocumentoTexto.Normalizar(c.Text);
+            if (norm.Length == 0) return false;
+            return aliasesNorm.Any(a => norm == a
+                || (norm.Length <= a.Length + 30
+                    && System.Text.RegularExpressions.Regex.IsMatch(norm, $@"\b{System.Text.RegularExpressions.Regex.Escape(a)}\b")));
         }
-        // Se algum rótulo foi achado em layout linha mas valor estava vazio → não preenchido.
-        // Não faz sentido cair em layout coluna se a tabela já tem o campo como rótulo de linha.
-        if (rotuloEncontrado) return false;
+        bool TemValor(ExtractedTableCell c) => !string.IsNullOrWhiteSpace(c.Text) || c.ImageCount > 0;
 
-        // 2) Layout coluna: qualquer alias aparece como cabeçalho de coluna.
-        var spec = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+        var linhas = table.Cells.GroupBy(c => c.Row).OrderBy(g => g.Key)
+            .Select(g => g.OrderBy(c => c.Column).ToList())
+            .Where(l => !QuadroCaracteristicas.EhLinhaDeGradeDeFolhas(l) && !DefaultEvidenceSelector.EhCabecalhoDeGrade(l))
+            .ToList();
+
+        for (var r = 0; r < linhas.Count; r++)
         {
-            ["v"] = aliases
-        };
-        var byCol = QuadroCaracteristicas.FieldsByColumn(table, spec);
-        return byCol is not null
-            && byCol.TryGetValue("v", out var v)
-            && !string.IsNullOrWhiteSpace(v);
+            foreach (var celula in linhas[r])
+            {
+                // "Título do Documento: UP-26…" — o rótulo começa a célula e o valor vem depois do ":".
+                var doisPontos = celula.Text.IndexOf(':');
+                if (doisPontos > 0)
+                {
+                    var rotulo = DocumentoTexto.Normalizar(celula.Text[..doisPontos]);
+                    if (aliasesNorm.Any(a => rotulo == a || rotulo.StartsWith(a + " ", StringComparison.Ordinal))
+                        && celula.Text[(doisPontos + 1)..].Trim().Length > 0)
+                        return true;
+                }
+
+                if (!EhRotulo(celula)) continue;
+
+                var resto = linhas[r].Where(c => c.Column > celula.Column).ToList();
+
+                // "Rótulo:" ocupando a linha inteira é campo de valor na própria célula; vazio
+                // depois do ":" é campo vazio. Procurar na linha de baixo pegaria o subtítulo
+                // seguinte do formulário ("DENOMINAÇÃO MAGNÉTICA") como se fosse o valor.
+                if (doisPontos > 0 && linhas[r].Count == 1) continue;
+                if (resto.Any(c => TemValor(c) && !EhRotulo(c))) return true;
+
+                // Linha de cabeçalho: os vizinhos também são rótulos (ou não há vizinhos) — o
+                // valor está na linha de baixo, mesma coluna.
+                var linhaDeCabecalho = resto.Count == 0 || resto.All(c => TemValor(c) && EhRotulo(c));
+                if (linhaDeCabecalho && r + 1 < linhas.Count
+                    && linhas[r + 1].FirstOrDefault(c => c.Column == celula.Column) is { } abaixo
+                    && TemValor(abaixo) && !EhRotulo(abaixo))
+                    return true;
+            }
+        }
+        return false;
     }
 
     private static IReadOnlyList<string> AliasesFor(DocumentContext ctx, string campo)

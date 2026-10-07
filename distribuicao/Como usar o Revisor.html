@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como usar o Revisor</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --papel: #ffffff;
+    --texto: #1d2330;
+    --suave: #5b6475;
+    --linha: #e2e5ea;
+    --destaque: #1f6feb;
+    --destaque-fundo: #e8f0fe;
+    --ok: #1a7f37;
+    --aviso: #9a6700;
+    --aviso-fundo: #fff8e5;
+    --erro: #cf222e;
+    --erro-fundo: #ffebe9;
+    --term-bg: #0f1218;
+    --term-texto: #d6dae3;
+    --term-suave: #7d8595;
+    --term-azul: #58a6ff;
+    --term-verde: #3fb950;
+    --term-amarelo: #d29922;
+    --term-vermelho: #f85149;
+    --raio: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117;
+      --papel: #161b22;
+      --texto: #e6edf3;
+      --suave: #9aa4b2;
+      --linha: #2b323c;
+      --destaque: #58a6ff;
+      --destaque-fundo: #132339;
+      --ok: #3fb950;
+      --aviso: #d29922;
+      --aviso-fundo: #2b2111;
+      --erro: #f85149;
+      --erro-fundo: #2d1416;
+      --term-bg: #05070a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117;
+    --papel: #161b22;
+    --texto: #e6edf3;
+    --suave: #9aa4b2;
+    --linha: #2b323c;
+    --destaque: #58a6ff;
+    --destaque-fundo: #132339;
+    --ok: #3fb950;
+    --aviso: #d29922;
+    --aviso-fundo: #2b2111;
+    --erro: #f85149;
+    --erro-fundo: #2d1416;
+    --term-bg: #05070a;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--texto);
+    font: 16px/1.6 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+
+  header.capa {
+    background: var(--papel);
+    border: 1px solid var(--linha);
+    border-radius: var(--raio);
+    padding: 28px 28px 24px;
+    margin-bottom: 28px;
+  }
+  .selo {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--destaque);
+    background: var(--destaque-fundo);
+    padding: 2px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 0 0 10px; line-height: 1.3; }
+  h3 { font-size: 17px; margin: 18px 0 6px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 18px; color: var(--suave); margin: 0; }
+
+  nav.indice {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: 18px 0 0;
+  }
+  nav.indice a {
+    font-size: 14px;
+    color: var(--texto);
+    text-decoration: none;
+    border: 1px solid var(--linha);
+    border-radius: 999px;
+    padding: 4px 12px;
+  }
+  nav.indice a:hover { border-color: var(--destaque); color: var(--destaque); }
+
+  section {
+    background: var(--papel);
+    border: 1px solid var(--linha);
+    border-radius: var(--raio);
+    padding: 24px 28px;
+    margin-bottom: 18px;
+  }
+  .passo { display: grid; grid-template-columns: 44px 1fr; gap: 16px; }
+  .numero {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--destaque); color: #fff;
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 20px;
+  }
+  .passo > div { min-width: 0; }
+
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  kbd {
+    font: 600 13px/1 Consolas, "Cascadia Mono", monospace;
+    border: 1px solid var(--linha);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    padding: 2px 6px;
+    background: var(--bg);
+  }
+  code {
+    font: 14px Consolas, "Cascadia Mono", monospace;
+    background: var(--bg);
+    border: 1px solid var(--linha);
+    border-radius: 6px;
+    padding: 1px 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .aviso, .dica, .perigo {
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-left: 4px solid;
+  }
+  .dica { background: var(--destaque-fundo); border-color: var(--destaque); }
+  .aviso { background: var(--aviso-fundo); border-color: var(--aviso); }
+  .perigo { background: var(--erro-fundo); border-color: var(--erro); }
+  .aviso p:last-child, .dica p:last-child, .perigo p:last-child { margin: 0; }
+
+  .terminal {
+    background: var(--term-bg);
+    color: var(--term-texto);
+    border-radius: 10px;
+    margin: 14px 0;
+    overflow: hidden;
+    border: 1px solid #000;
+  }
+  .terminal .barra {
+    background: #1b1f27;
+    color: #9aa4b2;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  .terminal pre {
+    margin: 0;
+    padding: 14px 16px;
+    font: 13.5px/1.5 Consolas, "Cascadia Mono", monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .t-suave { color: var(--term-suave); }
+  .t-azul { color: var(--term-azul); }
+  .t-verde { color: var(--term-verde); }
+  .t-amarelo { color: var(--term-amarelo); }
+  .t-vermelho { color: var(--term-vermelho); }
+  .t-negrito { font-weight: 700; color: #fff; }
+  .t-selecionado { color: var(--term-azul); font-weight: 700; }
+
+  .pasta {
+    font: 14px/1.7 Consolas, "Cascadia Mono", monospace;
+    background: var(--bg);
+    border: 1px solid var(--linha);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 12px 0;
+  }
+
+  .cartoes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+  }
+  .cartao {
+    border: 1px solid var(--linha);
+    border-top: 4px solid var(--suave);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .cartao strong { display: block; font-size: 16px; }
+  .cartao span { font-size: 14px; color: var(--suave); }
+  .cartao.erro { border-top-color: var(--erro); }
+  .cartao.erro strong { color: var(--erro); }
+  .cartao.aviso-c { border-top-color: var(--aviso); }
+  .cartao.aviso-c strong { color: var(--aviso); }
+  .cartao.ok { border-top-color: var(--ok); }
+  .cartao.ok strong { color: var(--ok); }
+
+  .tabela { width: 100%; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--linha); }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--suave); }
+  tr:last-child td { border-bottom: 0; }
+
+  details {
+    border: 1px solid var(--linha);
+    border-radius: 10px;
+    padding: 10px 16px;
+  }
+  summary { cursor: pointer; font-weight: 600; }
+
+  footer { text-align: center; color: var(--suave); font-size: 14px; margin-top: 28px; }
+
+  @media (max-width: 600px) {
+    h1 { font-size: 25px; }
+    header.capa, section { padding: 20px 16px; }
+    .passo { grid-template-columns: 1fr; gap: 10px; }
+    .numero { width: 36px; height: 36px; font-size: 17px; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.indice { display: none; }
+    section, header.capa { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="capa">
+  <div class="selo">Revisor v2.0.0 · checklist CL-001</div>
+  <h1>Como usar o Revisor de documentos técnicos</h1>
+  <p class="lead">Você entrega um documento do Word (.docx). O Revisor confere o documento contra o
+  checklist da qualidade e devolve uma <strong>cópia com comentários do Word</strong> em cada ponto
+  que precisa de atenção. O seu arquivo original não é alterado.</p>
+  <nav class="indice" aria-label="Índice">
+    <a href="#preparar">1. Preparar</a>
+    <a href="#abrir">2. Abrir</a>
+    <a href="#documento">3. Escolher o documento</a>
+    <a href="#tipo">4. Tipo de revisão</a>
+    <a href="#resultado">5. Resultado</a>
+    <a href="#word">6. Comentários no Word</a>
+    <a href="#varios">Vários de uma vez</a>
+    <a href="#problemas">Problemas comuns</a>
+  </nav>
+</header>
+
+<section>
+  <h2>Antes de começar</h2>
+  <ul>
+    <li><strong>Windows 10 ou 11</strong> (64 bits). Não precisa instalar nada.</li>
+    <li><strong>Internet</strong> para a revisão completa, que usa inteligência artificial. A revisão
+    rápida funciona sem internet.</li>
+    <li><strong>Microsoft Word</strong> para ler os comentários no documento revisado.</li>
+    <li>O documento precisa estar em <strong>.docx</strong>. Arquivos .doc antigos não são aceitos.</li>
+  </ul>
+</section>
+
+<section id="preparar">
+  <div class="passo">
+    <div class="numero">1</div>
+    <div>
+      <h2>Extraia o zip para uma pasta</h2>
+      <p>Clique com o botão direito no arquivo .zip, escolha <strong>Extrair tudo…</strong> e
+      depois <strong>Extrair</strong>. Uma boa pasta é, por exemplo, <code>Documentos\Revisor</code>.</p>
+      <p>A pasta extraída deve ficar assim:</p>
+      <div class="pasta">
+📁 Revisor<br>
+&nbsp;&nbsp;&nbsp;⚙️ Revisor.exe &nbsp;&nbsp;<span style="color:var(--suave)">← o programa</span><br>
+&nbsp;&nbsp;&nbsp;📄 appsettings.json<br>
+&nbsp;&nbsp;&nbsp;📄 Como usar o Revisor.html &nbsp;&nbsp;<span style="color:var(--suave)">← este tutorial</span><br>
+&nbsp;&nbsp;&nbsp;📁 profiles<br>
+&nbsp;&nbsp;&nbsp;📁 templates
+      </div>
+      <div class="perigo">
+        <p><strong>Não abra o Revisor.exe de dentro do zip</strong> e não copie só o .exe para outro lugar.
+        Ele precisa das pastas <code>profiles</code> e <code>templates</code> ao lado dele; sem elas, aparece
+        “Checklist CL-001 não encontrado”.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="abrir">
+  <div class="passo">
+    <div class="numero">2</div>
+    <div>
+      <h2>Abra o Revisor</h2>
+      <p>Há dois jeitos, escolha o que preferir:</p>
+      <ul>
+        <li><strong>Dê dois cliques</strong> no <code>Revisor.exe</code>. Ele abre uma janela preta e pergunta qual documento revisar.</li>
+        <li><strong>Arraste o documento .docx</strong> e solte em cima do <code>Revisor.exe</code>. Ele já começa por esse documento.</li>
+      </ul>
+      <div class="aviso">
+        <p><strong>Na primeira vez, o Windows pode mostrar “O Windows protegeu o computador”.</strong>
+        Isso acontece com programas internos, que não vêm de uma loja. Clique em
+        <strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong>. Nas próximas
+        vezes o aviso não aparece mais.</p>
+      </div>
+      <p>A janela é o próprio programa. Você responde com o teclado: as setas <kbd>↑</kbd> <kbd>↓</kbd>
+      escolhem uma opção e o <kbd>Enter</kbd> confirma. Não é preciso digitar comandos.</p>
+    </div>
+  </div>
+</section>
+
+<section id="documento">
+  <div class="passo">
+    <div class="numero">3</div>
+    <div>
+      <h2>Diga qual documento revisar</h2>
+      <p>O Revisor se apresenta e pergunta pelo documento. A linha <strong>IA disponível</strong> indica
+      que a revisão completa está pronta para uso.</p>
+      <div class="terminal" role="img" aria-label="Tela inicial do Revisor perguntando qual documento revisar">
+        <div class="barra">Revisor</div>
+<pre><span class="t-suave">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="t-suave">│</span> <span class="t-azul">✻</span> <span class="t-negrito">Revisor de documentos técnicos</span> <span class="t-suave">· CL-001 · v2.0.0</span>
+<span class="t-suave">│</span>
+<span class="t-suave">│</span> Confere o seu <span class="t-negrito">.docx</span> contra o checklist da qualidade e devolve
+<span class="t-suave">│</span> uma cópia com <span class="t-negrito">comentários do Word</span> em cada ponto que precisa
+<span class="t-suave">│</span> de atenção. <span class="t-suave">O arquivo original não é alterado.</span>
+<span class="t-suave">│</span>
+<span class="t-suave">│</span> <span class="t-suave">IA</span>  <span class="t-verde">disponível</span>
+<span class="t-suave">╰──────────────────────────────────────────────────────────────╯</span>
+
+<span class="t-azul">?</span> <span class="t-negrito">Qual documento você quer revisar?</span>
+  <span class="t-suave">Arraste o arquivo .docx (ou a pasta dele) para esta janela e tecle Enter. Enter vazio sai.</span>
+  <span class="t-azul">›</span> "C:\Projetos\RN-799-RL-64966-00.docx"</pre>
+      </div>
+      <ol>
+        <li>Abra a pasta onde está o seu documento no Explorador de Arquivos.</li>
+        <li><strong>Arraste o arquivo .docx para dentro da janela preta</strong>. O caminho do arquivo aparece escrito sozinho.</li>
+        <li>Tecle <kbd>Enter</kbd>.</li>
+      </ol>
+      <div class="dica">
+        <p><strong>Dica:</strong> você também pode arrastar a <strong>pasta</strong> do documento. O Revisor
+        lista os .docx que estão nela e você escolhe com as setas. Se preferir digitar ou colar o caminho, também funciona.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tipo">
+  <div class="passo">
+    <div class="numero">4</div>
+    <div>
+      <h2>Escolha o tipo de revisão</h2>
+      <div class="terminal" role="img" aria-label="Pergunta sobre o tipo de revisão">
+        <div class="barra">Revisor</div>
+<pre><span class="t-azul">?</span> <span class="t-negrito">Que tipo de revisão?</span>
+
+<span class="t-selecionado">&gt; Completa</span>  <span class="t-suave">regras automáticas + revisão de texto pela IA · ~40 s · ~US$ 0,08</span>
+  Rápida    <span class="t-suave">só regras automáticas · poucos segundos · sem custo</span></pre>
+      </div>
+      <div class="tabela">
+        <table>
+          <thead><tr><th>Tipo</th><th>Quando usar</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Completa</strong></td><td>Para a revisão de verdade, antes de emitir o documento. Confere as
+            regras automáticas e, com IA, a ortografia e os itens que dependem de ler o texto. Leva cerca de 40 segundos.</td></tr>
+            <tr><td><strong>Rápida</strong></td><td>Para uma checagem durante a elaboração. Confere só as regras
+            automáticas (formatação, cabeçalhos, codificação, revisões, referências…) em poucos segundos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Escolha com <kbd>↑</kbd> <kbd>↓</kbd> e confirme com <kbd>Enter</kbd>. Uma barra de progresso mostra o andamento.</p>
+    </div>
+  </div>
+</section>
+
+<section id="resultado">
+  <div class="passo">
+    <div class="numero">5</div>
+    <div>
+      <h2>Leia o resultado</h2>
+      <p>No fim, o Revisor mostra um resumo em quatro quadros:</p>
+      <div class="cartoes">
+        <div class="cartao erro"><strong>a corrigir</strong><span>Não conformidade. O documento precisa de ajuste antes de ser emitido.</span></div>
+        <div class="cartao aviso-c"><strong>a conferir</strong><span>Vale dar uma olhada. Pode estar certo, mas merece confirmação.</span></div>
+        <div class="cartao ok"><strong>regras ok</strong><span>Itens do checklist que o documento já atende.</span></div>
+        <div class="cartao"><strong>não se aplicam</strong><span>Regras de outro tipo de documento ou etapa, ou que só uma pessoa pode conferir.</span></div>
+      </div>
+      <p>Abaixo dos quadros vem a lista do que achou. Cada item diz o problema em português e, embaixo,
+      o item do checklist correspondente:</p>
+      <div class="terminal" role="img" aria-label="Exemplo de resultado">
+        <div class="barra">Revisor</div>
+<pre><span class="t-vermelho">✗ O documento precisa de ajustes.</span> <span class="t-suave">4 ponto(s) a corrigir e 2 a conferir.</span>
+
+<span class="t-vermelho">Precisa corrigir</span> <span class="t-suave">(4)</span>
+  <span class="t-vermelho">✗</span> Há uma referência cruzada vazia logo depois de «A Figura 77» que aponta
+    para uma legenda ou título que não existe mais. …
+    <span class="t-suave">PS-002 4.3.3 (letra h) (PdA, Cliente)</span>
+
+<span class="t-amarelo">Vale conferir</span> <span class="t-suave">(2)</span>
+  <span class="t-amarelo">!</span> O total de páginas no cabeçalho está gravado como texto fixo ("99") em vez
+    de campo NUMPAGES: ele não é atualizado ao repaginar o documento.
+    <span class="t-suave">PS-002 4.3.3 (letra f) (PdA, Cliente)</span></pre>
+      </div>
+      <div class="dica">
+        <p><strong>O Revisor aponta; quem decide é você.</strong> Os achados da IA, principalmente, podem
+        errar. Na dúvida, confira o item no checklist.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="word">
+  <div class="passo">
+    <div class="numero">6</div>
+    <div>
+      <h2>Veja os comentários no Word</h2>
+      <p>O documento revisado é salvo <strong>na mesma pasta do original</strong>, com
+      <code>-REVISADO</code> no fim do nome. Exemplo: <code>RN-799-RL-64966-00-REVISADO.docx</code>.</p>
+      <p>Depois do resultado, o Revisor pergunta o que fazer:</p>
+      <div class="terminal" role="img" aria-label="Menu final">
+        <div class="barra">Revisor</div>
+<pre><span class="t-azul">?</span> <span class="t-negrito">E agora?</span>
+
+<span class="t-selecionado">&gt; Abrir o documento revisado no Word</span>
+  Abrir a pasta do documento
+  Revisar outro documento
+  Sair</pre>
+      </div>
+      <p>No Word, os comentários ficam na margem direita. Se não aparecerem, vá em
+      <strong>Revisão › Mostrar Comentários</strong>. Cada comentário começa com o item do checklist entre
+      colchetes, por exemplo <code>[PS-002:4.3.3 (letra c):Cliente]</code>, e fica preso ao trecho do problema.</p>
+      <p>Corrija o <strong>documento original</strong> e rode o Revisor de novo, até não sobrar nada “a corrigir”.
+      A cópia <code>-REVISADO</code> serve só para leitura dos comentários.</p>
+      <div class="dica">
+        <p>Se o documento não tiver nenhum problema, a cópia sai igual ao original, sem comentários.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="varios">
+  <h2>Vários documentos de uma vez</h2>
+  <p>Selecione vários .docx no Explorador de Arquivos e <strong>arraste todos juntos</strong> sobre o
+  <code>Revisor.exe</code>. Ele pergunta o tipo de revisão uma vez, revisa um por um e, no fim, mostra uma
+  tabela com quantos pontos cada documento tem a corrigir e a conferir.</p>
+  <p>Para parar uma revisão no meio, tecle <kbd>Ctrl</kbd> + <kbd>C</kbd>.</p>
+</section>
+
+<section id="problemas">
+  <h2>Problemas comuns</h2>
+  <div class="tabela">
+    <table>
+      <thead><tr><th>O que aparece</th><th>O que fazer</th></tr></thead>
+      <tbody>
+        <tr><td>“O Windows protegeu o computador”</td>
+            <td>Clique em <strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong>.</td></tr>
+        <tr><td>“Arquivos .doc (Word 97-2003) não são aceitos”</td>
+            <td>Abra o arquivo no Word e use <strong>Arquivo › Salvar como › Documento do Word (.docx)</strong>.</td></tr>
+        <tr><td>“O arquivo de saída está aberto em outro programa”</td>
+            <td>A cópia <code>-REVISADO</code> de uma revisão anterior está aberta no Word. Feche-a e tente de novo.</td></tr>
+        <tr><td>“Checklist CL-001 não encontrado” ou “Nenhum perfil de cliente encontrado”</td>
+            <td>O Revisor.exe está sem as pastas dele. Extraia o zip inteiro de novo (passo 1) e abra o .exe de dentro da pasta extraída.</td></tr>
+        <tr><td>“A IA não está configurada”</td>
+            <td>Só a revisão rápida está disponível. Avise quem enviou o programa.</td></tr>
+        <tr><td>“Não encontrei esse arquivo”</td>
+            <td>Arraste o arquivo para a janela de novo, em vez de digitar o caminho.</td></tr>
+        <tr><td>Um item “a corrigir” sobre o <strong>nome do arquivo</strong></td>
+            <td>O nome do .docx deve ser a codificação do documento. O comentário diz qual nome era esperado.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Bom saber</h2>
+  <ul>
+    <li><strong>O original nunca é alterado.</strong> O Revisor só cria a cópia <code>-REVISADO</code>.</li>
+    <li><strong>Na revisão completa, o texto do documento é enviado para análise pela IA</strong> (OpenAI).
+    Para documentos que não podem sair da empresa, use a revisão rápida.</li>
+    <li>O programa usa a conta de IA da equipe. <strong>Não repasse o Revisor para fora da equipe.</strong></li>
+  </ul>
+  <details>
+    <summary>Para usuários avançados: linha de comando</summary>
+    <p style="margin-top:10px">Num Prompt de Comando aberto na pasta do Revisor:</p>
+    <div class="terminal"><pre>Revisor.exe review --doc "C:\Projetos\RN-799.docx"            <span class="t-suave">revisão completa</span>
+Revisor.exe review --doc "C:\Projetos\RN-799.docx" --no-llm   <span class="t-suave">revisão rápida</span>
+Revisor.exe review --doc "C:\Projetos\RN-799.docx" --verbose  <span class="t-suave">mostra também o que passou</span>
+Revisor.exe --help                                             <span class="t-suave">todas as opções</span></pre></div>
+    <p>Código de saída: 0 sem não conformidades, 2 com não conformidades, 1 erro de execução.</p>
+  </details>
+</section>
+
+<footer>Revisor de documentos técnicos · v2.0.0 · checklist CL-001</footer>
+
+</main>
+</body>
+</html>

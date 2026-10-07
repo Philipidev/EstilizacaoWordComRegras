@@ -5,11 +5,24 @@ using WordComplianceValidator.Core.Models;
 namespace WordComplianceValidator.Infrastructure.Checks;
 
 /// <summary>
-/// PS-002 4.3.3 (letra a) — Continuidade de título e conteúdo (mesma página).
-/// A extração via Open XML não fornece informação de paginação (page layout é
-/// calculado pelo Word em runtime). Verificação heurística: detectar quebras de
-/// página explícitas <c>w:br w:type="page"</c> imediatamente após parágrafos com
-/// estilo de heading. Caso a heurística não seja aplicável, retorna Skipped com nota.
+/// PS-002 4.3.3 (letra a) — Continuidade de título e conteúdo: o título tem de estar na mesma
+/// página do conteúdo.
+/// <para>
+/// O OOXML não guarda paginação, mas guarda dois sinais:
+/// </para>
+/// <list type="bullet">
+/// <item>quebra de página explícita depois do texto do título (ou em parágrafos vazios logo
+/// abaixo dele) — o conteúdo vai para a página seguinte em qualquer impressão: <b>erro</b>;</item>
+/// <item><c>w:lastRenderedPageBreak</c> no início do primeiro parágrafo de conteúdo — na última
+/// vez que o Word paginou, o título ficou no pé de uma página e o conteúdo começou na outra.
+/// Depende de fonte e impressora, então é <b>aviso</b>.</item>
+/// </list>
+/// <para>
+/// Títulos são reconhecidos pelo nível de estrutura (<c>outlineLvl</c>), não pelo nome do
+/// estilo: os documentos reais usam estilos próprios ("PDA-T1", "Ttulo1MRN", "Estilo1"), e a
+/// versão anterior, que exigia nomes começando com "Heading"/"Título", não via título nenhum e
+/// aprovava sempre.
+/// </para>
 /// </summary>
 public sealed class ContinuidadeTituloConteudoCheck : IRuleCheck
 {
@@ -23,57 +36,74 @@ public sealed class ContinuidadeTituloConteudoCheck : IRuleCheck
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
         var paragraphs = ctx.Structure.Paragraphs;
-        if (paragraphs.Count == 0)
+        var indiceDoPrimeiroTitulo = -1;
+        for (var k = 0; k < paragraphs.Count; k++)
+            if (EhTitulo(paragraphs[k])) { indiceDoPrimeiroTitulo = k; break; }
+
+        if (indiceDoPrimeiroTitulo < 0)
         {
             return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,
-                Array.Empty<Violation>(), Note: "Documento sem parágrafos extraídos."));
+                Array.Empty<Violation>(), Note: "Nenhum título (nível de estrutura) localizado no documento."));
         }
 
         var violations = new List<Violation>();
-        for (int i = 0; i < paragraphs.Count - 1; i++)
+        var titulos = 0;
+        for (var i = indiceDoPrimeiroTitulo; i < paragraphs.Count - 1; i++)
         {
-            var p = paragraphs[i];
-            if (!IsTitulo(p.StyleId)) continue;
+            var titulo = paragraphs[i];
+            if (!EhTitulo(titulo)) continue;
+            titulos++;
 
-            // Caso 1: o próprio parágrafo título termina com page break → conteúdo fica na próxima página.
-            if (p.EndsWithPageBreak)
+            if (titulo.PageBreakAfterText)
             {
-                violations.Add(new Violation(Ref.ToString(), Severity.Error,
-                    $"Título '{Trunc(p.Text, 60)}' termina com quebra de página — conteúdo na página seguinte.",
-                    new ViolationLocation(p.ParagraphId, null, null, "Continuidade título/conteúdo")));
+                violations.Add(Erro(titulo, "termina com quebra de página — o conteúdo vai para a página seguinte."));
                 continue;
             }
 
-            // Caso 2: parágrafos em branco logo após o título, e o último deles inicia
-            // antes de uma quebra → mesma situação (espaços empurrando o conteúdo).
-            int j = i + 1;
-            while (j < paragraphs.Count && string.IsNullOrWhiteSpace(paragraphs[j].Text)
-                   && !IsTitulo(paragraphs[j].StyleId))
+            // Parágrafos vazios logo abaixo do título até o primeiro conteúdo.
+            var j = i + 1;
+            var quebraExplicita = false;
+            while (j < paragraphs.Count && string.IsNullOrWhiteSpace(paragraphs[j].Text) && paragraphs[j].ImageCount == 0)
             {
-                if (paragraphs[j].EndsWithPageBreak)
-                {
-                    violations.Add(new Violation(Ref.ToString(), Severity.Error,
-                        $"Título '{Trunc(p.Text, 60)}' seguido apenas de parágrafos vazios antes de quebra de página.",
-                        new ViolationLocation(p.ParagraphId, null, null, "Continuidade título/conteúdo")));
-                    break;
-                }
+                if (paragraphs[j].EndsWithPageBreak) quebraExplicita = true;
                 j++;
+            }
+            if (j >= paragraphs.Count) break;
+
+            var conteudo = paragraphs[j];
+            if (quebraExplicita)
+            {
+                violations.Add(Erro(titulo, "é seguido de parágrafos vazios com quebra de página — o conteúdo fica na página seguinte."));
+            }
+            else if (conteudo.RenderedPageBreakAtStart || paragraphs.Skip(i + 1).Take(j - i).Any(p => p.RenderedPageBreakAtStart))
+            {
+                violations.Add(new Violation(Ref.ToString(), Severity.Warning,
+                    $"Título '{Trunc(titulo.Text, 60)}' ficou no pé da página, separado do conteúdo, na última " +
+                    "paginação do Word. Use \"Manter com o próximo\" no estilo de título ou ajuste a quebra.",
+                    new ViolationLocation(titulo.ParagraphId, null, titulo.SectionIndex, "Continuidade título/conteúdo")));
             }
         }
 
-        var status = violations.Count == 0 ? CheckStatus.Passed
-                   : violations.Any(v => v.Severity == Severity.Error) ? CheckStatus.Failed
+        var status = violations.Any(v => v.Severity == Severity.Error) ? CheckStatus.Failed
+                   : violations.Count > 0 ? CheckStatus.Skipped
                    : CheckStatus.Passed;
-        return Task.FromResult(new RuleCheckResult(Ref, status, violations));
+        return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: $"{titulos} título(s) verificados."));
+
+        Violation Erro(ExtractedParagraph titulo, string problema) =>
+            new(Ref.ToString(), Severity.Error, $"Título '{Trunc(titulo.Text, 60)}' {problema}",
+                new ViolationLocation(titulo.ParagraphId, null, titulo.SectionIndex, "Continuidade título/conteúdo"));
     }
 
-    private static bool IsTitulo(string? styleId)
+    /// <summary>Título = parágrafo com texto, fora de tabela e de índice, com nível de estrutura 1–9.</summary>
+    private static bool EhTitulo(ExtractedParagraph p) =>
+        p.OutlineLevel is >= 0 and <= 8
+        && !p.IsInTable
+        && !string.IsNullOrWhiteSpace(p.Text)
+        && !DocumentoTexto.EhEntradaIndice(p);
+
+    private static string Trunc(string s, int n)
     {
-        var s = styleId ?? string.Empty;
-        return s.StartsWith("Heading", StringComparison.OrdinalIgnoreCase)
-            || s.StartsWith("Titulo", StringComparison.OrdinalIgnoreCase)
-            || s.StartsWith("Título", StringComparison.OrdinalIgnoreCase);
+        var t = s.Replace('\n', ' ').Replace('\t', ' ').Trim();
+        return t.Length <= n ? t : t[..n] + "…";
     }
-
-    private static string Trunc(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 }

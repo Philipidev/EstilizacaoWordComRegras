@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Cli.Terminal;
 
 namespace WordComplianceValidator.Infrastructure.Tests.Cli;

@@ -14,9 +14,9 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// conceitual e projeto básico devem exibir "Não é Válido para Execução".
 /// 4.1.4: documentos traduzidos — depende de informação externa ao .docx; sempre Skipped.
 /// </para>
-/// A tarja é buscada em todo o texto (corpo, tabelas e cabeçalhos) porque nos documentos
-/// de referência ela aparece na descrição da revisão dentro da folha índice, e não como
-/// carimbo isolado.
+/// A tarja é buscada no que o leitor vê: cabeçalhos e rodapés exibidos (inclusive marca
+/// d'água), corpo e tabelas — exceto linhas de histórico de revisões, que apenas descrevem
+/// emissões passadas. Cabeçalhos que o Word não exibe só geram aviso.
 /// </summary>
 public sealed class TarjaEmissaoCheck : IRuleCheck
 {
@@ -52,8 +52,7 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
                 Note: "Revisão do documento não localizada no quadro Características."));
         }
 
-        var texto = DocumentoTexto.Integral(ctx.Structure);
-        var textoNorm = DocumentoTexto.Normalizar(texto);
+        var textoNorm = DocumentoTexto.Normalizar(TextoOndeATarjaValeComo(ctx.Structure));
 
         var etapaComentarios = Regex.IsMatch(revisao, "^0[A-Za-z]$");
         var violations = new List<Violation>();
@@ -73,6 +72,21 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
                 var onde = LocalizarTarja(ctx, tarjas);
                 if (onde is null)
                 {
+                    // Tarja só em cabeçalho que o Word não exibe: não aparece na impressão nem
+                    // no PDF, então não reprova — mas reaparece no dia em que alguém ativar
+                    // "primeira página diferente" ou "pares e ímpares diferentes" na seção.
+                    var latente = LocalizarTarjaOculta(ctx, tarjas);
+                    if (latente is not null)
+                    {
+                        violations.Add(new Violation(Ref.ToString(), Severity.Warning,
+                            $"A tarja \"{latente.Value.Texto}\" não aparece no documento, mas continua " +
+                            $"gravada num {latente.Value.Origem}, que o Word não exibe. Ela reaparece " +
+                            "se a seção passar a usar esse tipo de cabeçalho/rodapé; recomenda-se removê-la.",
+                            new ViolationLocation(null, latente.Value.Kind, latente.Value.Secao, "Tarja de emissão")));
+                        return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped, violations,
+                            Note: $"Revisão '{revisao}' — tarja de comentários apenas em cabeçalho/rodapé oculto."));
+                    }
+
                     return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,
                         Array.Empty<Violation>(),
                         Note: $"Revisão '{revisao}' não é etapa 0A–0Z e não há tarja de comentários."));
@@ -146,13 +160,13 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
         {
             var achada = Casar(hf.Text, tarjas);
             if (achada is not null)
-                return (achada, $"cabeçalho '{hf.Kind}' da seção {hf.SectionIndex + 1}", hf.Kind, hf.SectionIndex);
+                return (achada, DocumentoTexto.NomeDaParte("cabeçalho", hf.Kind, hf.SectionIndex), hf.Kind, hf.SectionIndex);
         }
         foreach (var hf in ctx.Structure.Footers)
         {
             var achada = Casar(hf.Text, tarjas);
             if (achada is not null)
-                return (achada, $"rodapé '{hf.Kind}' da seção {hf.SectionIndex + 1}", hf.Kind, hf.SectionIndex);
+                return (achada, DocumentoTexto.NomeDaParte("rodapé", hf.Kind, hf.SectionIndex), hf.Kind, hf.SectionIndex);
         }
 
         // No corpo a tarja também aparece na descrição das revisões anteriores, que é registro
@@ -164,6 +178,45 @@ public sealed class TarjaEmissaoCheck : IRuleCheck
         }
 
         return null;
+    }
+
+    private static (string Texto, string Origem, string? Kind, int? Secao)? LocalizarTarjaOculta(
+        DocumentContext ctx, IReadOnlyList<string> tarjas)
+    {
+        foreach (var hf in ctx.Structure.HiddenHeaderFooters)
+        {
+            var achada = Casar(hf.Text, tarjas);
+            if (achada is not null)
+                return (achada, DocumentoTexto.NomeDaParte("cabeçalho/rodapé", hf.Kind, hf.SectionIndex), hf.Kind, hf.SectionIndex);
+        }
+        return null;
+    }
+
+    private static readonly Regex Data = new(@"\b\d{1,2}/\d{1,2}/\d{2,4}\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Texto em que a presença da tarja conta: cabeçalhos e rodapés visíveis, corpo fora de
+    /// tabela e linhas de tabela que não são registro de revisão.
+    /// <para>
+    /// O histórico de revisões descreve emissões anteriores ("0B | 11/04/25 | … | Emissão
+    /// para comentários do cliente.") e antes bastava para dar a tarja como presente: um
+    /// documento em 0B sem tarja nenhuma era aprovado pela descrição da própria revisão. Uma
+    /// linha com data é registro histórico, não carimbo.
+    /// </para>
+    /// </summary>
+    private static string TextoOndeATarjaValeComo(DocumentStructure doc)
+    {
+        var linhasSemData = doc.Tables
+            .SelectMany(t => t.Cells.GroupBy(c => c.Row))
+            .Select(linha => string.Join(" ", linha.OrderBy(c => c.Column).Select(c => c.Text)))
+            .Where(texto => !Data.IsMatch(texto));
+
+        return string.Join("\n",
+            doc.Headers.Select(h => h.Text)
+               .Concat(doc.Footers.Select(f => f.Text))
+               .Concat(doc.Paragraphs.Where(p => !p.IsInTable).Select(p => p.Text))
+               .Concat(linhasSemData)
+               .Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 
     private static string? Casar(string? texto, IReadOnlyList<string> tarjas)

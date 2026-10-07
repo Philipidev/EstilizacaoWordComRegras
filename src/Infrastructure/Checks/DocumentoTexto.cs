@@ -18,6 +18,33 @@ public static class DocumentoTexto
                .Concat(doc.Footers.Select(f => f.Text))
                .Where(s => !string.IsNullOrWhiteSpace(s)));
 
+    /// <summary>
+    /// Parágrafos da folha de rosto / capa: do início do documento até o primeiro título de
+    /// nível 1 ou a primeira entrada de índice, o que vier antes. Inclui os parágrafos de
+    /// célula das tabelas da capa.
+    /// <para>
+    /// Antes cada check cortava num número fixo de parágrafos (30 ou 60). Nos documentos de
+    /// referência a folha índice do Cliente sozinha ocupa ~200 parágrafos de célula, e a folha
+    /// de rosto da PdA — com código, título e data — começa depois deles: os checks não a
+    /// viam e "passavam" encontrando a codificação nos cabeçalhos. O limite agora só vale para
+    /// documento sem título nem índice, onde não há fronteira a seguir.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<ExtractedParagraph> FolhaDeRosto(DocumentStructure doc, int limiteSemFronteira = 600)
+    {
+        var lista = new List<ExtractedParagraph>();
+        foreach (var p in doc.Paragraphs)
+        {
+            // Título vazio não é fronteira: o RN799 tem dois parágrafos vazios com nível 1 no
+            // meio da capa, e cortar ali escondia a codificação da folha de rosto.
+            var titulo = p.OutlineLevel == 0 && !string.IsNullOrWhiteSpace(p.Text);
+            if (titulo || EhEntradaIndice(p)) return lista;
+            lista.Add(p);
+        }
+        // Sem título nem índice o "fim da capa" não é observável: vale o limite.
+        return lista.Take(Math.Max(1, limiteSemFronteira)).ToList();
+    }
+
     /// <summary>Títulos do documento (parágrafos com nível de outline e texto), em ordem.</summary>
     public static IReadOnlyList<ExtractedParagraph> Titulos(DocumentStructure doc) =>
         doc.Paragraphs
@@ -78,6 +105,35 @@ public static class DocumentoTexto
     /// </summary>
     public static string NormalizarTitulo(string? raw) =>
         Normalizar(System.Text.RegularExpressions.Regex.Replace(raw ?? string.Empty, @"\d{5,}", " "));
+
+    /// <summary>
+    /// Nome do alinhamento como aparece no Word ("justificado"), não o valor do OOXML ("both").
+    /// As mensagens viram comentários lidos por quem edita o documento.
+    /// </summary>
+    public static string NomeDoAlinhamento(string? ooxml) => (ooxml ?? string.Empty).ToLowerInvariant() switch
+    {
+        "both" => "justificado",
+        "center" => "centralizado",
+        "right" or "end" => "à direita",
+        "left" or "start" or "" => "à esquerda",
+        "distribute" => "distribuído",
+        var outro => outro
+    };
+
+    /// <summary>
+    /// "cabeçalho das páginas pares da seção 3" a partir do tipo OOXML ("default", "first",
+    /// "even"). A mensagem vai para quem edita no Word, que não conhece esses nomes.
+    /// </summary>
+    public static string NomeDaParte(string parte, string? tipo, int? secao)
+    {
+        var qual = (tipo ?? string.Empty).ToLowerInvariant() switch
+        {
+            "first" => " da primeira página",
+            "even" => " das páginas pares",
+            _ => ""
+        };
+        return secao is null ? parte + qual : $"{parte}{qual} da seção {secao + 1}";
+    }
 
     /// <summary>Lê um parâmetro do profile como lista separada por '|'.</summary>
     public static string[] Lista(string? valor, string padrao) =>

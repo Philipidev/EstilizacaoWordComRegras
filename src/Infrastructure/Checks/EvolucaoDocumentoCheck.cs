@@ -34,6 +34,10 @@ public sealed class EvolucaoDocumentoCheck : IRuleCheck
                 Note: "Quadro 'Características do Documento' não localizado."));
         }
 
+        var historico = QuadroCaracteristicas.HistoricoDeRevisoes(table);
+        if (historico.Count > 0)
+            return Task.FromResult(AvaliarHistorico(historico));
+
         var byLabel = QuadroCaracteristicas.FieldsByLabel(table);
         var revisao = LookupAny(byLabel, rotulos);
 
@@ -68,6 +72,61 @@ public sealed class EvolucaoDocumentoCheck : IRuleCheck
 
         var status = violations.Count == 0 ? CheckStatus.Passed : CheckStatus.Failed;
         return Task.FromResult(new RuleCheckResult(Ref, status, violations));
+    }
+
+    /// <summary>
+    /// Evolução pelo histórico do quadro: cada revisão no padrão, em ordem estritamente
+    /// crescente (0A → 0B → … → 00 → 01 …) e com datas que não andam para trás.
+    /// <para>
+    /// Antes a revisão era lida por rótulo — e o primeiro rótulo "Rev." do quadro real é o
+    /// cabeçalho da grade de folhas. Num quadro conforme cujo histórico vinha logo abaixo do
+    /// cabeçalho, o valor lido era "Data Emissor Verificador…" e o check reprovava.
+    /// </para>
+    /// </summary>
+    private RuleCheckResult AvaliarHistorico(IReadOnlyList<QuadroCaracteristicas.EntradaDeRevisao> historico)
+    {
+        var violations = new List<Violation>();
+        QuadroCaracteristicas.EntradaDeRevisao? anterior = null;
+
+        foreach (var entrada in historico)
+        {
+            var ordem = QuadroCaracteristicas.OrdemDaRevisaoPda(entrada.Revisao);
+            if (ordem is null)
+            {
+                violations.Add(Erro($"Revisão '{entrada.Revisao}' do histórico não segue o padrão (0A–0Z, 00, 01–99)."));
+            }
+            else if (anterior is not null
+                     && QuadroCaracteristicas.OrdemDaRevisaoPda(anterior.Revisao) is { } ordemAnterior
+                     && ordem <= ordemAnterior)
+            {
+                violations.Add(Erro($"Revisão '{entrada.Revisao}' vem depois de '{anterior.Revisao}' no histórico: " +
+                                    "a sequência deve ser crescente (0A → 0B → … → 00 → 01 …)."));
+            }
+
+            if (anterior?.DataLida is { } dataAnterior && entrada.DataLida is { } data && data < dataAnterior)
+            {
+                violations.Add(new Violation(Ref.ToString(), Severity.Warning,
+                    $"A revisão '{entrada.Revisao}' ({entrada.Data}) tem data anterior à da revisão " +
+                    $"'{anterior.Revisao}' ({anterior.Data}).",
+                    new ViolationLocation(null, null, null, "Quadro Características")));
+            }
+
+            if (string.IsNullOrWhiteSpace(entrada.Data))
+            {
+                violations.Add(Erro($"A revisão '{entrada.Revisao}' está sem data no histórico do quadro."));
+            }
+
+            anterior = entrada;
+        }
+
+        var status = violations.Any(v => v.Severity == Severity.Error) ? CheckStatus.Failed
+                   : violations.Count > 0 ? CheckStatus.Skipped
+                   : CheckStatus.Passed;
+        return new RuleCheckResult(Ref, status, violations,
+            Note: $"Histórico: {string.Join(" → ", historico.Select(e => e.Revisao))}.");
+
+        Violation Erro(string m) => new(Ref.ToString(), Severity.Error, m,
+            new ViolationLocation(null, null, null, "Quadro Características"));
     }
 
     private static string? LookupAny(IReadOnlyDictionary<string, string> fields, IEnumerable<string> aliases)

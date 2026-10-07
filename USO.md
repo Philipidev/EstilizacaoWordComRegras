@@ -5,12 +5,34 @@ Como validar um documento `.docx` e receber de volta o arquivo **com anotações
 
 ---
 
+## 0. O jeito mais simples: modo guiado
+
+Para quem não usa terminal. Dê **duplo clique no `Revisor.exe`** (ou rode `Revisor` sem nada,
+ou `dotnet run --project src/Cli` no repositório) e o programa conversa com você:
+
+1. Mostra uma tela de boas-vindas com o cliente e se a IA está disponível.
+2. Pergunta **qual documento** revisar — basta **arrastar o `.docx` para a janela** e teclar
+   Enter. Também aceita a pasta: ele lista os `.docx` dela para você escolher com as setas.
+3. Se a IA estiver configurada, pergunta o **tipo de revisão**: *Completa* (regras + revisão de
+   texto pela IA, ~40 s, ~US$ 0,08) ou *Rápida* (só regras automáticas, segundos, sem custo).
+4. Mostra o andamento (lendo → conferindo regras → gravando comentários) e o resultado:
+   quantos pontos **a corrigir** e **a conferir**, cada um explicado em português.
+5. No fim oferece **abrir o documento revisado no Word**, abrir a pasta, revisar outro ou sair.
+
+Também dá para **arrastar um ou vários `.docx` direto sobre o `Revisor.exe`**: ele revisa todos
+em sequência, sem perguntar o documento.
+
+O arquivo original nunca é alterado — a cópia comentada é salva ao lado dele, com
+`-REVISADO` no nome. `Ctrl+C` cancela a revisão em andamento.
+
+---
+
 ## 1. Pré-requisitos
 
 
 | Requisito                                   | Para quê                                      | Obrigatório?                                                                            |
 | ------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
-| .NET 8 SDK                                  | rodar o CLI                                   | sim                                                                                     |
+| .NET 10 SDK                                 | rodar o CLI                                   | sim                                                                                     |
 | `OPENAI_API_KEY`                            | regras semânticas (LLM)                       | não — sem ela o CLI roda só os checks determinísticos e avisa `[info] LLM desabilitado` |
 | Arquivo `.docx` a validar                   | entrada                                       | sim                                                                                     |
 | Arquivo de **profile do cliente** (`.json`) | regras parametrizadas                         | sim                                                                                     |
@@ -38,27 +60,8 @@ resolvido sozinho quando existe apenas um em `profiles/`, e a saída vai para
 `<documento>-REVISADO.docx`, na pasta do documento. Para controlar tudo:
 
 ```powershell
-dotnet run --project src/Cli -- review `
-  --doc      "templates\RN-816-RL-67456-00.docx" `
-  --profile  "profiles\exemplo.json" `
-  --out      "templates\out\RN-816-RL-67456-00-REVISADO.docx"
+dotnet run --project src/Cli -- review --doc      "templates\RN-816-RL-67456-00.docx" --profile  "profiles\exemplo.json" --out      "templates\out\RN-816-RL-67456-00-REVISADO.docx"
 ```
-
-`--help` lista as opções e traz exemplos dos usos mais comuns.
-
-O que acontece:
-
-1. O CLI lê o `.docx` indicado em `--doc`.
-2. Carrega o profile do cliente.
-3. Executa as regras automatizadas do checklist CL-001: **38 checks determinísticos**
-  dedicados (39 quando o LLM está ativo), mais as regras avaliadas pelo **motor semântico
-   genérico** conforme a allow-list `semantico.regrasHabilitadas` do profile
-   (23 em `profiles/exemplo.json`).
-4. Insere **comentários OpenXML** no `.docx` para cada violação encontrada.
-5. Salva o resultado em `--out` (cria a pasta se não existir). Se o documento passar **sem
-  nenhuma violação**, o arquivo de saída é uma cópia byte a byte do original.
-6. Imprime no terminal o resumo: o total de itens do checklist e quantas regras deram
-  `passou`, `falhou`, `pulado` e `erro`.
 
 ---
 
@@ -212,10 +215,9 @@ Abra `output/revisado.docx` no Microsoft Word.
 - Os **comentários** ficam visíveis no painel lateral de revisão (`Revisão → Mostrar Comentários`).
 - Cada comentário começa com o identificador da regra entre colchetes,
 ex.: `[PS-002:4.3.3 (letra c):Cliente] Iniciais idênticas (...)`.
-- Quando **houve pelo menos uma violação**, o CLI reescreve o documento marcando
-`UpdateFieldsOnOpen=true`; ao abrir no Word, os campos (sumário/TOC, números de página,
-referências) são recalculados automaticamente. Se o documento passar sem nenhuma violação,
-o arquivo de `--out` é cópia byte a byte do original — sem comentários e sem essa marcação.
+- O CLI só acrescenta os comentários: campos (sumário/TOC, números de página, referências)
+ficam como o autor salvou, e o Word abre o arquivo sem perguntar nada. Se o documento passar
+sem nenhuma violação, o arquivo de `--out` é cópia byte a byte do original.
 
 
 
@@ -280,7 +282,7 @@ específico. Estrutura mínima:
   "cliente": "Nome do Cliente",
   "versao": "1.0",
   "parameters": {
-    "codificacao.pdaRegex": "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
+    "codificacao.pdaRegex": "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$",
     "codificacao.clienteRegex": "^[A-Z0-9]{2,4}-[A-Z]{2,4}-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
     "logomarcas.minimo": "2"
   }
@@ -364,7 +366,7 @@ Sugestão de fluxo na equipe:
 | `System.IO.FileFormatException` ao abrir o documento                                       | não é um `.docx` real (ex.: `.doc` antigo renomeado, ou outro formato)                                                      | reabra no Word e salve como `.docx`                                                                                                                 |
 | `Sheet 'WORD' não encontrada`                                                              | checklist customizado sem a sheet correta                                                                                   | use o `CL-001-CL00100.xlsx` original ou ajuste o seu                                                                                                |
 | Comentários não aparecem no Word                                                           | painel oculto, **ou** o documento passou sem violação (nesse caso não há comentário algum e o arquivo é cópia do original)  | em **Revisão → Mostrar Comentários** habilite a exibição; confira se o resumo mostra `falhou: 0`                                                    |
-| Numeração de páginas / sumário ficam em branco                                             | os campos não foram recalculados                                                                                            | feche e reabra o arquivo (é na **abertura** que o `UpdateFieldsOnOpen` age, não no salvamento), ou selecione tudo com **Ctrl+A** e pressione **F9** |
+| Numeração de páginas / sumário ficam em branco                                             | os campos não foram recalculados                                                                                            | selecione tudo com **Ctrl+A** e pressione **F9** (o revisor não força o recálculo: isso fazia o Word perguntar "Deseja atualizar os campos?" a cada abertura) |
 
 
 ---
@@ -388,7 +390,9 @@ templates\checklists\CL-001-CL00100.xlsx
 profiles\*.json
 ```
 
-Copie a pasta inteira para a máquina de destino e chame `Revisor.exe review --doc "...".`
+Copie a pasta inteira para a máquina de destino. Quem vai usar só precisa dar **duplo clique
+no `Revisor.exe`** ou **arrastar o `.docx` sobre ele** (modo guiado, seção 0); scripts e CI
+continuam usando `Revisor.exe review --doc "..."`.
 O `LocalizadorDeRecursos` procura o checklist e os profiles a partir da pasta do executável,
 então o programa funciona chamado de qualquer diretório.
 

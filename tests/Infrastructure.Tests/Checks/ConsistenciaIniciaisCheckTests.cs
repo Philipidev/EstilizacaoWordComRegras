@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -42,7 +42,7 @@ public class ConsistenciaIniciaisCheckTests
     {
         var ctx = Ctx("Elaborado por JAS, verificado por MBC, aprovado por XYZ",
             elab: "João A. (JAS)", verif: "Maria B. (MBC)", aprov: "Sr. X (XYZ)");
-        var result = await new ConsistenciaIniciaisCheck().RunAsync(ctx);
+        var result = await new ConsistenciaIniciaisCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -51,7 +51,7 @@ public class ConsistenciaIniciaisCheckTests
     {
         var ctx = Ctx("Folha de rosto sem indicação correta: AAA BBB",
             elab: "João A. (JAS)", verif: "Maria B. (MBC)", aprov: "Sr. X (XYZ)");
-        var result = await new ConsistenciaIniciaisCheck().RunAsync(ctx);
+        var result = await new ConsistenciaIniciaisCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Failed);
         result.Violations.Should().HaveCountGreaterThan(0);
     }

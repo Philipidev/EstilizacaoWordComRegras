@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -12,8 +11,6 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class CodificacaoClienteCheck : IRuleCheck
 {
-    private const RegexOptions Opt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-
     public ChecklistRef Ref { get; } = new("PS-018", "4.7", ChecklistPadrao.Cliente);
 
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
@@ -42,9 +39,7 @@ public sealed class CodificacaoClienteCheck : IRuleCheck
                 }));
         }
 
-        var pattern = SearchPattern(clienteRx);
-        var hit = table.Cells.Any(c =>
-            !string.IsNullOrWhiteSpace(c.Text) && Regex.IsMatch(c.Text, pattern, Opt));
+        var hit = Codificacao.EncontrarEmQualquer(table.Cells.Select(c => c.Text), clienteRx) is not null;
 
         var violations = new List<Violation>();
         if (!hit)
@@ -56,13 +51,5 @@ public sealed class CodificacaoClienteCheck : IRuleCheck
 
         var status = violations.Count == 0 ? CheckStatus.Passed : CheckStatus.Failed;
         return Task.FromResult(new RuleCheckResult(Ref, status, violations));
-    }
-
-    private static string SearchPattern(string regex)
-    {
-        var p = regex.Trim();
-        if (p.StartsWith('^')) p = p[1..];
-        if (p.EndsWith('$')) p = p[..^1];
-        return p;
     }
 }

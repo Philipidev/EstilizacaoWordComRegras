@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -49,7 +49,7 @@ public class QuadroCaracteristicasPreenchidoCheckTests
             ("Verificado por", "Beltrano (BEL)"),
             ("Aprovado por", "Ciclano (CIC)"),
         });
-        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx);
+        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -62,7 +62,7 @@ public class QuadroCaracteristicasPreenchidoCheckTests
             ("Título",      ""),
             ("Revisão",     "00"),
         }, camposObrigatorios: "Codificação|Título|Revisão");
-        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx);
+        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Failed);
         result.Violations.Should().Contain(v => v.Message.Contains("Título"));
     }
@@ -81,7 +81,7 @@ public class QuadroCaracteristicasPreenchidoCheckTests
             false, false, false);
         var ctx = new DocumentContext("f.docx", structure,
             new ClientProfile("X", "1.0", new Dictionary<string, string>()));
-        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx);
+        var result = await new QuadroCaracteristicasPreenchidoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         result.Status.Should().Be(CheckStatus.Failed);
     }
 }

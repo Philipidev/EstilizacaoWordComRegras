@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- Configuração comum a todos os projetos. Antes cada .csproj repetia o próprio
+       TargetFramework, e a troca de versão do .NET era um "procurar e substituir" em seis
+       arquivos. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -75,7 +75,7 @@ public class EvidenciaEAncoraTests
     }
 
     [Fact]
-    public void Ancora_ignora_celulas_curtas_e_cai_no_paragrafo_citado()
+    public async Task Ancora_ignora_celulas_curtas_e_cai_no_paragrafo_citado()
     {
         // A capa contribui com células de um caractere; o parágrafo real do problema vem depois.
         var doc = DocxFixtureBuilder.Novo()
@@ -95,7 +95,7 @@ public class EvidenciaEAncoraTests
 
         var check = new SemanticChecklistCheck(
             Entrada(), new RespostaFixa(avaliacao), new DefaultEvidenceSelector());
-        var resultado = check.RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
 
         var alvo = doc.Paragraphs.Single(p => p.Text.Contains("E-mail Relevantes"));
         var celulaCurta = doc.Paragraphs.First(p => p.Text == "0");
@@ -106,7 +106,7 @@ public class EvidenciaEAncoraTests
     }
 
     [Fact]
-    public void Ancora_prefere_igualdade_exata_a_substring_que_aparece_antes()
+    public async Task Ancora_prefere_igualdade_exata_a_substring_que_aparece_antes()
     {
         // "Aprovado" (resultado de ensaio) é substring de "assinatura do aprovador" e vem
         // muito antes no documento — sem ordem de preferência, o comentário ancorava nele.
@@ -126,7 +126,7 @@ public class EvidenciaEAncoraTests
 
         var check = new SemanticChecklistCheck(
             Entrada(), new RespostaFixa(avaliacao), new DefaultEvidenceSelector());
-        var resultado = check.RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
 
         var esperado = doc.Paragraphs.Single(p => p.Text == "Assinatura do Aprovador");
         resultado.Violations.Single().Location!.ParagraphId.Should().Be(esperado.ParagraphId);
@@ -194,24 +194,24 @@ public class EvidenciaEAncoraTests
     }
 
     [Fact]
-    public void Quadro_sem_campo_de_pagina_na_secao_nao_acusa_numeracao()
+    public async Task Quadro_sem_campo_de_pagina_na_secao_nao_acusa_numeracao()
     {
         var ctx = ContextoDoQuadro(cabecalhoComCampoPagina: false);
         var check = new QuadroCaracteristicasPreenchidoCheck(ChecklistPadrao.Pda, "4.7");
 
-        var resultado = check.RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
 
         resultado.Violations.Should().NotContain(v => v.Message.Contains("numeracao de paginas")
                                                    || v.Message.Contains("numeração de páginas"));
     }
 
     [Fact]
-    public void Quadro_com_campo_de_pagina_na_secao_acusa_numeracao()
+    public async Task Quadro_com_campo_de_pagina_na_secao_acusa_numeracao()
     {
         var ctx = ContextoDoQuadro(cabecalhoComCampoPagina: true);
         var check = new QuadroCaracteristicasPreenchidoCheck(ChecklistPadrao.Pda, "4.7");
 
-        var resultado = check.RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await check.RunAsync(ctx, TestContext.Current.CancellationToken);
 
         resultado.Violations.Should().Contain(v => v.Message.Contains("numeração de páginas"));
     }
@@ -377,7 +377,7 @@ public class EvidenciaEAncoraTests
     }
 
     [Fact]
-    public void Total_de_paginas_literal_menor_que_a_grade_e_erro()
+    public async Task Total_de_paginas_literal_menor_que_a_grade_e_erro()
     {
         var celulas = new List<ExtractedTableCell>
         {
@@ -404,8 +404,8 @@ public class EvidenciaEAncoraTests
         var ctx = new DocumentContext("fixture.docx", doc,
             new ClientProfile("Teste", "1.0", new Dictionary<string, string>()));
 
-        var resultado = new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
-            .RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
 
         resultado.Status.Should().Be(CheckStatus.Failed);
         resultado.Violations.Should().Contain(v => v.Message.Contains("folha 100")
@@ -413,7 +413,7 @@ public class EvidenciaEAncoraTests
     }
 
     [Fact]
-    public void Folha_alem_do_total_mas_sem_marcacao_e_slot_vazio_e_nao_erro()
+    public async Task Folha_alem_do_total_mas_sem_marcacao_e_slot_vazio_e_nao_erro()
     {
         // Na grade do RN-816 a folha 100 existe impressa mas nao tem "x" em revisao nenhuma:
         // e linha reservada do formulario, nao pagina do documento.
@@ -437,15 +437,15 @@ public class EvidenciaEAncoraTests
         var ctx = new DocumentContext("fixture.docx", doc,
             new ClientProfile("Teste", "1.0", new Dictionary<string, string>()));
 
-        var resultado = new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
-            .RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
 
         resultado.Status.Should().NotBe(CheckStatus.Failed);
         resultado.Violations.Should().NotContain(v => v.Severity == Severity.Error);
     }
 
     [Fact]
-    public void Total_de_paginas_por_campo_NUMPAGES_nao_gera_achado()
+    public async Task Total_de_paginas_por_campo_NUMPAGES_nao_gera_achado()
     {
         var doc = new DocumentStructure(
             FileName: "fixture.docx",
@@ -460,8 +460,8 @@ public class EvidenciaEAncoraTests
         var ctx = new DocumentContext("fixture.docx", doc,
             new ClientProfile("Teste", "1.0", new Dictionary<string, string>()));
 
-        var resultado = new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
-            .RunAsync(ctx).GetAwaiter().GetResult();
+        var resultado = await new PaginacaoAtualizadaCheck(ChecklistPadrao.Pda, "4.3.3 (letra f)")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
 
         resultado.Violations.Should().BeEmpty();
     }

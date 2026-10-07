@@ -23,14 +23,14 @@ public sealed class ExcelChecklistRepository : IChecklistRepository
         using var doc = SpreadsheetDocument.Open(source, isEditable: false);
         var wbPart = doc.WorkbookPart
             ?? throw new InvalidOperationException("Workbook sem WorkbookPart.");
-        var sheet = wbPart.Workbook.Sheets?.Elements<Sheet>()
+        var sheet = wbPart.Workbook?.Sheets?.Elements<Sheet>()
                        .FirstOrDefault(s => string.Equals(s.Name?.Value, SheetName, StringComparison.OrdinalIgnoreCase))
                    ?? throw new InvalidOperationException($"Sheet '{SheetName}' não encontrada.");
         var wsPart = (WorksheetPart)wbPart.GetPartById(sheet.Id!);
         var sst = wbPart.SharedStringTablePart?.SharedStringTable;
 
         var entries = new List<ChecklistEntry>();
-        foreach (var row in wsPart.Worksheet.Descendants<Row>())
+        foreach (var row in wsPart.Worksheet?.Descendants<Row>() ?? [])
         {
             if (row.RowIndex is null || row.RowIndex.Value <= 2) continue; // skip title + header rows
 

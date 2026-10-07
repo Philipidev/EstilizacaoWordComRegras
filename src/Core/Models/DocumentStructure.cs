@@ -24,6 +24,12 @@ public sealed record ExtractedHeaderFooter(
 
     public IReadOnlyList<string> ParagraphAlignments { get; init; } =
         ParagraphAlignments ?? Array.Empty<string>();
+
+    /// <summary>
+    /// <c>false</c> quando o Word nunca exibe esta parte: 'first' numa seção sem "primeira
+    /// página diferente", 'even' sem "pares e ímpares diferentes", ou parte não referenciada.
+    /// </summary>
+    public bool Visivel { get; init; } = true;
 }
 
 public sealed record ExtractedSection(
@@ -33,7 +39,16 @@ public sealed record ExtractedSection(
     double? MarginTop,
     double? MarginBottom,
     double? MarginLeft,
-    double? MarginRight);
+    double? MarginRight,
+    // w:titlePg — "primeira página diferente": a 1ª página da seção usa o cabeçalho 'first'.
+    bool TitlePage = false)
+{
+    /// <summary>Cabeçalhos e rodapés exibidos em alguma página da seção, herança incluída.</summary>
+    public IReadOnlyList<ExtractedHeaderFooter> DisplayedHeaderFooters { get; init; } = Array.Empty<ExtractedHeaderFooter>();
+
+    /// <summary>Cabeçalho e rodapé da primeira página da seção.</summary>
+    public IReadOnlyList<ExtractedHeaderFooter> FirstPageHeaderFooters { get; init; } = Array.Empty<ExtractedHeaderFooter>();
+}
 
 public sealed record ExtractedParagraph(
     string ParagraphId,
@@ -66,6 +81,16 @@ public sealed record ExtractedParagraph(
 {
     public IReadOnlyList<string> FieldCodes { get; init; } =
         FieldCodes ?? Array.Empty<string>();
+
+    /// <summary>Quebra de página explícita depois de algum texto do parágrafo (o resto vai para a página seguinte).</summary>
+    public bool PageBreakAfterText { get; init; }
+
+    /// <summary>
+    /// O parágrafo começou numa página nova na última vez que o Word o paginou
+    /// (<c>w:lastRenderedPageBreak</c> antes de qualquer texto). É o único vestígio de layout
+    /// que o OOXML guarda.
+    /// </summary>
+    public bool RenderedPageBreakAtStart { get; init; }
 }
 
 public sealed record ExtractedTableCell(
@@ -81,6 +106,23 @@ public sealed record ExtractedTable(
     int Index,
     IReadOnlyList<ExtractedTableCell> Cells,
     string? FirstRowText);
+
+/// <summary>
+/// Referência cruzada que aponta para um indicador inexistente. O Word só mostra
+/// "Erro! Indicador não definido" depois de atualizar os campos; até lá o texto em cache
+/// parece correto, e é isso que este registro pega.
+/// </summary>
+public sealed record BrokenFieldReference(string ParagraphId, string Field, string Bookmark)
+{
+    /// <summary>
+    /// O que o Word mostra hoje no lugar do campo (resultado em cache, ex.: "Figura 92"). Nulo
+    /// quando o campo não tem resultado — fica invisível até os campos serem atualizados.
+    /// </summary>
+    public string? DisplayedText { get; init; }
+
+    /// <summary>Texto do parágrafo antes do campo, para dizer onde ele está.</summary>
+    public string TextBefore { get; init; } = string.Empty;
+}
 
 /// <summary>Propriedades do pacote OOXML (aba "Propriedades" do Word).</summary>
 public sealed record ExtractedDocumentProperties(
@@ -104,8 +146,19 @@ public sealed record DocumentStructure(
     bool HasOpenComments,
     bool HasUpdatedToc,
     IReadOnlyList<string>? BodyFieldCodes = null,
-    ExtractedDocumentProperties? Properties = null)
+    ExtractedDocumentProperties? Properties = null,
+    // Cabeçalhos e rodapés que existem no pacote mas o Word não exibe. Headers/Footers trazem
+    // só os visíveis; estes ficam à parte para avisos sobre conteúdo latente.
+    IReadOnlyList<ExtractedHeaderFooter>? HiddenHeaderFooters = null,
+    // Campos REF/PAGEREF/NOTEREF do corpo cujo indicador (bookmark) não existe no documento.
+    IReadOnlyList<BrokenFieldReference>? BrokenReferences = null)
 {
+    public IReadOnlyList<BrokenFieldReference> BrokenReferences { get; init; } =
+        BrokenReferences ?? Array.Empty<BrokenFieldReference>();
+
     public IReadOnlyList<string> BodyFieldCodes { get; init; } =
         BodyFieldCodes ?? Array.Empty<string>();
+
+    public IReadOnlyList<ExtractedHeaderFooter> HiddenHeaderFooters { get; init; } =
+        HiddenHeaderFooters ?? Array.Empty<ExtractedHeaderFooter>();
 }

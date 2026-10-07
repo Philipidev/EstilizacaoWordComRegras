@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Core.Profile;
@@ -55,7 +55,7 @@ public class NewChecksSmokeTests
         };
         var ctx = Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro },
                             fileName: "QC5-PDA-26-04-022-RT-00.docx"), profile);
-        var r = await new LocalizacaoCodificacaoCheck().RunAsync(ctx);
+        var r = await new LocalizacaoCodificacaoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -72,7 +72,7 @@ public class NewChecksSmokeTests
             new ExtractedParagraph("p1", null, "XX9-PDA-99-99-999-RT")
         };
         var ctx = Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro }), profile);
-        var r = await new LocalizacaoCodificacaoCheck().RunAsync(ctx);
+        var r = await new LocalizacaoCodificacaoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -86,7 +86,7 @@ public class NewChecksSmokeTests
         };
         var quadro = Quadro(("Cliente", "MRN-AB-001"));
         var ctx = Ctx(Build(tables: new[] { quadro }), profile);
-        var r = await new CodificacaoClienteCheck().RunAsync(ctx);
+        var r = await new CodificacaoClienteCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -99,7 +99,7 @@ public class NewChecksSmokeTests
         };
         var quadro = Quadro(("Cliente", "outro"));
         var ctx = Ctx(Build(tables: new[] { quadro }), profile);
-        var r = await new CodificacaoClienteCheck().RunAsync(ctx);
+        var r = await new CodificacaoClienteCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -113,7 +113,7 @@ public class NewChecksSmokeTests
     {
         var quadro = Quadro(("Revisão", rev));
         var ctx = Ctx(Build(tables: new[] { quadro }));
-        var r = await new EvolucaoDocumentoCheck().RunAsync(ctx);
+        var r = await new EvolucaoDocumentoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -122,7 +122,7 @@ public class NewChecksSmokeTests
     {
         var quadro = Quadro(("Revisão", "X"));
         var ctx = Ctx(Build(tables: new[] { quadro }));
-        var r = await new EvolucaoDocumentoCheck().RunAsync(ctx);
+        var r = await new EvolucaoDocumentoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -136,7 +136,7 @@ public class NewChecksSmokeTests
             new ExtractedHeaderFooter("default", "Empresa - Projeto X", 2),
         };
         var ctx = Ctx(Build(headers: headers));
-        var r = await new CabecalhosPadronizadosCheck().RunAsync(ctx);
+        var r = await new CabecalhosPadronizadosCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -149,7 +149,7 @@ public class NewChecksSmokeTests
             new ExtractedHeaderFooter("default", "Empresa - Projeto Y", 1),
         };
         var ctx = Ctx(Build(headers: headers));
-        var r = await new CabecalhosPadronizadosCheck().RunAsync(ctx);
+        var r = await new CabecalhosPadronizadosCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -158,7 +158,7 @@ public class NewChecksSmokeTests
     public async Task RefCruzadas_pass_when_no_error_marks()
     {
         var paragraphs = new[] { new ExtractedParagraph("p1", null, "Ver Figura 1.") };
-        var r = await new ReferenciasCruzadasCheck().RunAsync(Ctx(Build(paragraphs: paragraphs)));
+        var r = await new ReferenciasCruzadasCheck().RunAsync(Ctx(Build(paragraphs: paragraphs)), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -169,7 +169,7 @@ public class NewChecksSmokeTests
         {
             new ExtractedParagraph("p1", null, "Ver Erro! Indicador não definido. para detalhes.")
         };
-        var r = await new ReferenciasCruzadasCheck().RunAsync(Ctx(Build(paragraphs: paragraphs)));
+        var r = await new ReferenciasCruzadasCheck().RunAsync(Ctx(Build(paragraphs: paragraphs)), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -180,7 +180,7 @@ public class NewChecksSmokeTests
         var quadro = Quadro(("Revisão", "01"));
         var paragraphs = new[] { new ExtractedParagraph("p1", null, "Documento Rev. 01 - emitido") };
         var r = await new CoerenciaRevisoesCheck().RunAsync(
-            Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro })));
+            Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro })), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -190,7 +190,7 @@ public class NewChecksSmokeTests
         var quadro = Quadro(("Revisão", "05"));
         var paragraphs = new[] { new ExtractedParagraph("p1", null, "Documento Rev. 01") };
         var r = await new CoerenciaRevisoesCheck().RunAsync(
-            Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro })));
+            Ctx(Build(paragraphs: paragraphs, tables: new[] { quadro })), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -211,7 +211,7 @@ public class NewChecksSmokeTests
             new ExtractedParagraph("p3", null, "março de 2026"),
             new ExtractedParagraph("p4", null, "QC5-PDA-26-04-022-RT")
         };
-        var r = await new FolhaRostoCheck().RunAsync(Ctx(Build(paragraphs: paragraphs), profile));
+        var r = await new FolhaRostoCheck().RunAsync(Ctx(Build(paragraphs: paragraphs), profile), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -227,7 +227,7 @@ public class NewChecksSmokeTests
             new ExtractedParagraph("p1", null, "Documento sem código"),
             new ExtractedParagraph("p2", null, "março/2026")
         };
-        var r = await new FolhaRostoCheck().RunAsync(Ctx(Build(paragraphs: paragraphs), profile));
+        var r = await new FolhaRostoCheck().RunAsync(Ctx(Build(paragraphs: paragraphs), profile), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Failed);
     }
 }

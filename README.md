@@ -2,7 +2,7 @@
 
 Valida documentos `.docx` contra o checklist **CL-001** (planilha Excel), por cliente. Insere comentários OpenXML nas violações encontradas.
 
-**Stack:** C# / .NET 8 · Open XML SDK · OpenAI (LLM opcional) · Excel (OOXML)
+**Stack:** C# 14 / .NET 10 (LTS) · Open XML SDK 3.5 · OpenAI SDK 2.14 (LLM opcional) · System.CommandLine 2.0 · Spectre.Console · xUnit v3 + Microsoft.Testing.Platform
 
 ---
 
@@ -39,7 +39,11 @@ como instrução de verificação — mediante allow-list explícita no profile 
 ## Estrutura do projeto
 
 ```
-EstilizacaoWordComRegras.sln
+EstilizacaoWordComRegras.slnx   ← solução no formato novo (XML) do SDK 10
+Directory.Build.props          ← net10.0, nullable, implicit usings — para todos os projetos
+Directory.Packages.props       ← versões de pacote centralizadas (CPM)
+global.json                    ← SDK 10 e dotnet test no Microsoft.Testing.Platform
+nuget.config                   ← só nuget.org (não herda feeds privados da máquina)
 src/
   Core/
     Abstractions/       IDocxStructureExtractor, ICommentInserter
@@ -66,20 +70,20 @@ src/
                         IndicePaginaCheck, ApendiceAnexoCheck,
                         SemanticChecklistCheck  ← motor genérico
                         SemanticCheckFactory, DefaultEvidenceSelector,
-                        QuadroCaracteristicas, DocumentoTexto (helpers)
+                        QuadroCaracteristicas, DocumentoTexto, Codificacao (helpers)
     Excel/              ExcelChecklistRepository
-    OpenAI/             OpenAiSemanticChecker, OpenAiSettings
+    OpenAI/             OpenAiSemanticChecker, OpenAiSettings, ConsumoDeTokens
     OpenXml/            DocxStructureExtractor, CommentInserter
     Profile/            JsonClientProfileRepository
   Application/
     Services/           DocumentReviewService, DocumentReviewReport
   Cli/
-    Program.cs          Comandos: review, dump-checklist
-    appsettings.json                 ← rastreado, chave vazia
+    Program.cs          Comandos: review, dump-checklist, dump-evidencia
+    appsettings.json                 ← rastreado, chave vazia; modelo, raciocínio e tarifas
     appsettings.Development.json     ← ignorado pelo git, guarda a chave local
 tests/
   Core.Tests/           (7 testes)
-  Infrastructure.Tests/ (86 testes)
+  Infrastructure.Tests/ (138 testes)
     Fixtures/           DocxFixtureBuilder  ← gera .docx com defeito deliberado
 templates/
   checklists/           CL-001-CL00100.xlsx  ← checklist real (86 linhas)
@@ -93,22 +97,31 @@ TODO_REGRAS.md          ← rastreamento por regra (status, implementação, heu
 
 ## Pré-requisitos
 
-- .NET 8 SDK
+- .NET 10 SDK (10.0.100 ou superior; ver `global.json`)
 - `OPENAI_API_KEY` — env var, ou `OpenAI:ApiKey` em `src/Cli/appsettings.Development.json`
   (ignorado pelo git). Necessário apenas para checks semânticos (LLM); sem ela o CLI roda os
   checks determinísticos e avisa `[info] LLM desabilitado`.
-  **Nunca** coloque a chave em `src/Cli/appsettings.json` — esse arquivo é rastreado.
+  **Nunca** coloque a chave em `src/Cli/appsettings.json` — esse arquivo é rastreado e vai
+  dentro do pacote publicado pelo `publicar.ps1`.
+- `OpenAI:Model` (padrão `gpt-6.1-sol`), `OpenAI:ReasoningEffort` (padrão `medium`) e
+  `OpenAI:Precos` (tarifa por modelo, usada para estimar o custo) ficam em `appsettings.json`.
 
 ---
 
 ## Build & Testes
 
 ```bash
-dotnet build EstilizacaoWordComRegras.sln
-dotnet test  EstilizacaoWordComRegras.sln
+dotnet build
+dotnet test
 ```
 
-Resultado esperado: **93 testes, todos passando** (Core 7 + Infrastructure 86).
+Os testes rodam no **xUnit v3** sobre o **Microsoft.Testing.Platform** (`global.json` →
+`"test": { "runner": "Microsoft.Testing.Platform" }`). Opções úteis do `dotnet test` nesse modo:
+`--coverlet` para cobertura (coverlet.MTP), e `-- --filter-method "*Tarja*"` para rodar só parte.
+As asserções usam o **AwesomeAssertions** — fork Apache-2.0 do FluentAssertions, que a partir da
+versão 8 passou a exigir licença paga para uso comercial; a API é a mesma.
+
+Resultado esperado: **145 testes, todos passando** (Core 7 + Infrastructure 138).
 
 A suíte tem duas metades complementares:
 - `RealDocumentCheckTests` — documentos reais conformes **não** podem gerar alarme (precisão).
@@ -127,6 +140,17 @@ A suíte tem duas metades complementares:
 > 👉 Veja **[USO.md](USO.md)** para um guia passo-a-passo de usabilidade
 > (como rodar pela linha de comando, abrir o arquivo revisado no Word,
 > interpretar comentários, etc.).
+
+### Modo guiado — para quem não usa terminal
+
+Sem argumentos (duplo clique no `Revisor.exe`) ou só com `.docx` (arquivos arrastados sobre ele),
+e com uma pessoa do outro lado, o CLI vira uma conversa: tela de boas-vindas, pergunta o
+documento (aceita arrastar o arquivo ou a pasta para a janela), o tipo de revisão (completa com
+IA ou rápida) e o cliente; mostra o andamento ao vivo, o resultado em cartões ("a corrigir",
+"a conferir", "regras ok", "não se aplicam") com os achados em português e, no fim, oferece abrir
+o documento no Word. Com a saída redirecionada (scripts, CI) nada disso aparece — vale o comando
+`review`. Implementação: `src/Cli/Terminal/ModoGuiado.cs` e `Apresentacao.cs` (Spectre.Console),
+testada com `Spectre.Console.Testing` em `ModoGuiadoTests` simulando a digitação e as setas.
 
 ### `review` — revisar um documento
 
@@ -147,6 +171,17 @@ Flags opcionais:
 Exit code:
 - `0` → sem violações de severidade `Error`
 - `2` → há pelo menos uma violação `Error`
+- `1` → erro de execução ou de linha de comando (arquivo inexistente, `.doc`, opção faltando ou
+  desconhecida). Erros de digitação saem em uma frase em português ("Falta a opção obrigatória
+  --doc.") com a indicação `Revisor review --help`, em vez da ajuda inteira em inglês.
+
+Com a saída redirecionada (`> saida.txt`, pipeline de CI) o texto sai em **UTF-8**, qualquer que
+seja a code page do console. No Windows PowerShell 5.1, que decodifica a saída de programas pela
+code page, rode antes `[Console]::OutputEncoding = [Text.UTF8Encoding]::new()` para os acentos
+chegarem certos num `| Out-File`; no `cmd` e no PowerShell 7.4+ com `>` não é preciso nada.
+
+Com o LLM ativo, o fim da saída traz o **consumo por modelo**: chamadas, tokens de entrada
+(e quanto saiu do cache), saída, raciocínio e o custo estimado pelas tarifas de `OpenAI:Precos`.
 
 ### `dump-checklist` — listar entradas do checklist (debug)
 
@@ -155,6 +190,16 @@ dotnet run --project src/Cli -- dump-checklist
 # ou com arquivo alternativo:
 dotnet run --project src/Cli -- dump-checklist --checklist outro.xlsx
 ```
+
+### `dump-evidencia` — ver o que o LLM recebe (debug)
+
+```bash
+dotnet run --project src/Cli -- dump-evidencia --doc templates/RN799RL6496600.docx --profile profiles/exemplo.json
+```
+
+Imprime o pacote de evidências que o motor semântico envia em toda chamada. É o primeiro
+passo para calibrar um falso positivo do LLM: quase sempre o problema está no recorte, não no
+modelo.
 
 ---
 
@@ -176,7 +221,7 @@ Exemplo completo (`profiles/exemplo.json`):
     "iniciais.rotuloElaborador": "Elaborado por|Emissor|Elaborador",
     "iniciais.rotuloVerificador": "Verificado por|Verificador|Verificador Técnico",
     "iniciais.rotuloAprovador": "Aprovado por|Aprovador",
-    "codificacao.pdaRegex": "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
+    "codificacao.pdaRegex": "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$",
     "codificacao.clienteRegex": "^[A-Z0-9]{2,4}-[A-Z]{2,4}-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
     "codificacao.aliasesRotulo": "Codificação PdA|Codificação|Código do Documento|Documento|Código",
     "revisao.aliasesRotulo": "Revisão|Rev.|Rev",
@@ -200,13 +245,13 @@ Todos os valores aceitam múltiplos aliases separados por `|`.
 | `logomarcas.minimo` | Mínimo de imagens no cabeçalho | `2` |
 | `quadroCaracteristicas.aliases` | Termos que identificam o quadro Características | `Características do Documento|...` |
 | `iniciais.rotuloElaborador` / `rotuloVerificador` / `rotuloAprovador` | Rótulos do quadro para extrair iniciais | ver exemplo |
-| `codificacao.pdaRegex` | Regex que define o padrão PdA | obrigatório p/ regras de codificação |
-| `codificacao.clienteRegex` | Regex que define o padrão Cliente | opcional |
+| `codificacao.pdaRegex` | Regex da codificação PdA **sem** o sufixo de revisão (15 caracteres, ex.: `RN-816-RL-67456`) | obrigatório p/ regras de codificação |
+| `codificacao.clienteRegex` | Regex da codificação do Cliente sem o sufixo de revisão (ex.: `QD5-PDA-26-04-095-RT`) | opcional |
 | `codificacao.aliasesRotulo` | Rótulos do quadro que contêm a codificação | `Codificação PdA|Codificação|...` |
 | `revisao.aliasesRotulo` | Rótulos do campo de revisão | `Revisão|Rev.|Rev` |
 | `quadro.camposObrigatorios` | Lista de campos que devem estar preenchidos no quadro | ver exemplo |
 | `quadro.aliases.<campo>` | Aliases por campo individual do quadro | defaults internos |
-| `folhaRosto.paragrafosIniciais` | Quantos parágrafos iniciais considerar como folha de rosto | `60` |
+| `folhaRosto.paragrafosIniciais` | Limite da folha de rosto **só** em documento sem título nem índice (com eles, a capa vai até o primeiro título de nível 1) | `600` |
 | `folhaRosto.contratante` | Nome da empresa contratante a procurar na folha de rosto | (opcional) |
 | `folhaRosto.titulo` | Título esperado do documento | (opcional) |
 | `referenciasCruzadas.marcasErro` | Marcas que indicam erro em referência cruzada (separadas por `\|`) | `Erro! Indicador não definido\|Erro! Fonte de referência\|...` |
@@ -222,8 +267,12 @@ Todos os valores aceitam múltiplos aliases separados por `|`.
 | `numeracao.exigirDireita` | `true` para exigir numeração alinhada à direita no cabeçalho | `false` |
 | `painelNavegacao.comprimentoMaximoTitulo` | Acima disso um "título" é tratado como corpo mal marcado | `200` |
 | `semantico.regrasHabilitadas` | Refs que o motor semântico pode assumir (`\|`-separado, ou `*`) | (vazio = motor desligado) |
-| `semantico.modelo.default` | Modelo padrão das regras semânticas | `gpt-5.6-sol` |
-| `semantico.modelo.<Ref>` | Override de modelo por regra (ex.: `gpt-5.6-luna`) | usa o default |
+| `semantico.modelo.default` | Modelo das regras semânticas deste cliente | `OpenAI:Model` (`gpt-6.1-sol`) |
+| `semantico.modelo.<Ref>` | Override de modelo por regra (ex.: `gpt-6-luna`) | usa o default |
+
+Os regexes de codificação descrevem o código **sem** sufixo de revisão; a busca aceita sozinha
+`-00`/`-0A` (PdA) e `-1`/`-12` (Cliente) e exige fronteira dos dois lados. O sufixo é usado
+por `PS-002:4.3.3 (letra i)` para conferir a revisão vigente.
 
 **Validação:** parâmetros marcados como regex (`codificacao.pdaRegex`,
 `codificacao.clienteRegex`) e numéricos (`logomarcas.minimo`,
@@ -234,29 +283,35 @@ profile inválido provoca exceção imediata em vez de falhar silenciosamente.
 
 ## Checks implementados
 
-**39 entradas do CL-001** com `IRuleCheck` dedicado — **38** quando o LLM está desligado, já
-que `PS-002:4.3.2:Cliente` exige avaliação semântica — mais **23** elegíveis ao motor
+**44 entradas do CL-001** com `IRuleCheck` dedicado — **43** quando o LLM está desligado, já
+que `PS-002:4.3.2:Cliente` exige avaliação semântica — mais **18** elegíveis ao motor
 semântico no `profiles/exemplo.json`. Total: 62 de 86.
 
 As 24 restantes dependem de sistemas externos ao `.docx`: 22 entradas do PS-005 (fluxo
 Meridian, e-mails ao GQ, autoridade do aprovador) e as 2 de `4.3.3 (letra b)`, que exigem a
 tabela oficial de iniciais do PL-011.
 
+> **Cabeçalhos considerados.** O extrator entrega aos checks só os cabeçalhos e rodapés que o
+> Word **exibe**: o `first` só em seção com "primeira página diferente" (`w:titlePg`), o `even`
+> só com "pares e ímpares diferentes" (`w:evenAndOddHeaders`), com a herança entre seções. Os
+> demais ficam em `DocumentStructure.HiddenHeaderFooters` e só geram aviso. Antes todos eram
+> tratados como visíveis — e o RN-816 era reprovado por uma tarja que nenhuma página mostra.
+
 ### PS-002 — Edição de Documentos Técnicos
 
 | Check | Ref | Descrição |
 |---|---|---|
-| `LogomarcasNoHeaderCheck` | `PS-002:4.1:Cliente` | Verifica se há `logomarcas.minimo` imagens no cabeçalho |
-| `FolhaRostoCheck` | `PS-002:4.3.1:Pda` | Folha de rosto contém empresa, título, data, codificação |
-| `FolhaRostoVsCaracteristicasCheck` (LLM) | `PS-002:4.3.2:Cliente` | Coerência semântica folha × quadro |
-| `ContinuidadeTituloConteudoCheck` × 2 | `PS-002:4.3.3 (a):Cliente/Pda` | Continuidade título/conteúdo (heurístico) |
-| `IniciaisDistintasCheck` × 2 | `PS-002:4.3.3 (c):Cliente/Pda` | Elaborador ≠ Verificador |
-| `ConsistenciaIniciaisCheck` × 2 | `PS-002:4.3.3 (d):Cliente/Pda` | Iniciais consistentes folha × quadro |
-| `QuadroCaracteristicasPreenchidoCheck` (item `4.3.3 (letra e)`) | `PS-002:4.3.3 (e):Cliente` | Campos obrigatórios preenchidos |
-| `PaginacaoAtualizadaCheck` (item `4.3.3 (letra f)`) | `PS-002:4.3.3 (f):Cliente` | Paginação atualizada |
-| `CabecalhosPadronizadosCheck` | `PS-002:4.3.3 (g):Cliente` | Cabeçalhos uniformes entre seções |
-| `ReferenciasCruzadasCheck` | `PS-002:4.3.3 (h):Cliente` | Sem marcas "Erro! Indicador não definido" |
-| `CoerenciaRevisoesCheck` | `PS-002:4.3.3 (i):Cliente` | Revisão do quadro consta na folha de rosto |
+| `LogomarcasNoHeaderCheck` | `PS-002:4.1:Cliente` | Ao menos `logomarcas.minimo` imagens num mesmo cabeçalho exibido |
+| `FolhaRostoCheck` | `PS-002:4.3.1:Pda` | Capa (até o 1º título) contém empresa, título, mês/ano e codificação PdA |
+| `FolhaRostoVsCaracteristicasCheck` (LLM) | `PS-002:4.3.2:Cliente` | Coerência semântica folha × quadro, sobre o pacote de evidências compartilhado |
+| `ContinuidadeTituloConteudoCheck` × 2 | `PS-002:4.3.3 (a):Cliente/Pda` | Quebra depois do título (erro) e título no pé da página na última paginação (`lastRenderedPageBreak`, aviso) |
+| `IniciaisDistintasCheck` × 2 | `PS-002:4.3.3 (c):Cliente/Pda` | Elaborador ∩ verificador = ∅ na revisão vigente do histórico |
+| `ConsistenciaIniciaisCheck` × 2 | `PS-002:4.3.3 (d):Cliente/Pda` | Iniciais da revisão vigente constam na folha de rosto |
+| `QuadroCaracteristicasPreenchidoCheck` (item `4.3.3 (letra e)`) | `PS-002:4.3.3 (e):Cliente` | Campos obrigatórios preenchidos (revisão vigente, "Rótulo: valor", formulário) |
+| `PaginacaoAtualizadaCheck` × 2 (item `4.3.3 (letra f)`) | `PS-002:4.3.3 (f):Cliente/Pda` | Paginação atualizada |
+| `CabecalhosPadronizadosCheck` × 2 | `PS-002:4.3.3 (g):Cliente/Pda` | Cabeçalhos exibidos uniformes entre seções |
+| `ReferenciasCruzadasCheck` × 2 | `PS-002:4.3.3 (h):Cliente/Pda` | Marcas "Erro! …" (PT/EN) e REF/PAGEREF/NOTEREF para indicador inexistente |
+| `CoerenciaRevisoesCheck` × 2 | `PS-002:4.3.3 (i):Cliente/Pda` | Sufixo das codificações × revisão vigente; emissões ao Cliente × revisões PdA por data |
 | `IndiceAtualizadoCheck` | `PS-002:4.3.5.1:Cliente` | TOC presente e sem marcas de erro |
 | `PaginacaoAtualizadaCheck` (item `4.3.6.6`) | `PS-002:4.3.6.6:Cliente` | Numeração das páginas (padrão Cliente) |
 | `QuadroCaracteristicasPreenchidoCheck` (item `4.7`) | `PS-002:4.7:Cliente` | Quadro Características completo |
@@ -283,10 +338,10 @@ tabela oficial de iniciais do PL-011.
 
 | Check | Ref | Descrição |
 |---|---|---|
-| `CodificacaoTecnicaCheck` | `PS-018:4.3:Cliente` | Codificação PdA no nome do arquivo e no quadro |
-| `LocalizacaoCodificacaoCheck` | `PS-018:4.3.2 (a):Cliente` | Coerência entre arquivo, folha de rosto e quadro |
+| `CodificacaoTecnicaCheck` | `PS-018:4.3:Cliente` | Nome do arquivo e as duas codificações (PdA e Cliente) no quadro |
+| `LocalizacaoCodificacaoCheck` | `PS-018:4.3.2 (a):Cliente` | Coerência entre arquivo, folha de rosto (sem cabeçalhos) e quadro |
 | `CodificacaoClienteCheck` | `PS-018:4.7:Cliente` | Codificação do Cliente presente no quadro |
-| `EvolucaoDocumentoCheck` | `PS-018:4.8:Cliente` | Revisão segue padrão (0A–0Z, 00, 01–99) |
+| `EvolucaoDocumentoCheck` | `PS-018:4.8:Cliente` | Histórico em sequência crescente (0A → … → 00 → 01), no padrão e com datas que não regridem |
 
 Todos registrados em `CheckRegistry.Deterministicos()` — a mesma lista que o CLI executa e
 que `CatalogCoverageTests` audita.
@@ -295,15 +350,30 @@ que `CatalogCoverageTests` audita.
 
 ## Uso de LLM (semantic checker)
 
-Modelo padrão: **`gpt-5.6-sol`**. A família GPT-5.6 tem três níveis (Sol, Terra, Luna) e o
-profile permite escolher por regra — rodar Sol em 20+ regras por documento é caro, e várias
-delas são checagem simples de presença de texto.
+Modelo: **`gpt-6.1-sol`** com `reasoning_effort` **medium**, para todas as regras
+(`OpenAI:Model` e `OpenAI:ReasoningEffort`). O profile ainda aceita `semantico.modelo.<Ref>`
+para trocar o modelo de uma regra específica, mas o `exemplo.json` não usa.
+
+**Custo medido** (outubro/2026, `profiles/exemplo.json`, 20 chamadas por documento):
+
+| Documento | Entrada | em cache | Saída | Custo | Tempo |
+|---|---:|---:|---:|---:|---:|
+| `RN799RL6496600.docx` | 160.574 | 93% | 3.851 | US$ 0,080 | 34 s |
+| `RN-816-RL-67456-00.docx` | 171.745 | 93% | 3.682 | US$ 0,081 | 33 s |
+
+O que segura o custo é o **cache de prompt**. O pacote de evidências (~8 mil tokens) é igual
+para todas as regras do documento e vai numa mensagem de sistema *antes* do item do checklist;
+o cache implícito da OpenAI marca o fim desse bloco como fronteira, e as 19 chamadas seguintes
+leem o pacote a 0,05× da tarifa. A primeira chamada de cada documento vai sozinha e as demais
+esperam (`OpenAiSemanticChecker.CompletarAsync`), porque seis chamadas simultâneas sobre o cache
+frio pagariam seis gravações — e no `gpt-6.1-sol` gravar custa 1,25× a entrada. Com o item
+antes da evidência, como era, nenhuma chamada acertava o cache.
 
 ### Checks dedicados que usam LLM
 
 | Regra | LLM | Comportamento |
 |---|---|---|
-| `PS-002:4.3.2:Cliente` | **obrigatório** | Avaliação semântica direta da compatibilidade folha de rosto × quadro Características. |
+| `PS-002:4.3.2:Cliente` | **obrigatório** | Compatibilidade folha de rosto × quadro Características, sobre o mesmo pacote de evidências do motor genérico (e no mesmo cache). |
 | `PS-002:4.3.1:Pda` | **opcional / fallback** | Quando habilitado, confirma semanticamente que o texto extraído realmente contém empresa + título + data + codificação. |
 | `PS-002:4.3.3 (g):Cliente` | **opcional / override** | Quando habilitado e a heurística detectou divergência de cabeçalhos, o LLM pode aprovar caso as diferenças sejam apenas de formatação. |
 
@@ -334,17 +404,29 @@ caem no caminho regex-only / são puladas com nota explicativa.
 
 | Documento | LLM | passou | falhou | pulado | erro |
 |---|---|---:|---:|---:|---:|
-| `templates/RN799RL6496600.docx` | não | 26 | 0 | 60 | 0 |
-| `templates/RN-816-RL-67456-00.docx` | não | 32 | 0 | 54 | 0 |
-| `templates/RN799RL6496600.docx` | `gpt-5.6-sol` | 31 | 7 | 48 | 0 |
-| `templates/RN-816-RL-67456-00.docx` | `gpt-5.6-sol` | 35 | 11 | 40 | 0 |
+| `templates/RN799RL6496600.docx` | não | 27 | 0 | 59 | 0 |
+| `templates/RN-816-RL-67456-00.docx` | não | 31 | 2 | 53 | 0 |
+| `templates/RN799RL6496600.docx` | `gpt-6.1-sol` medium | 35 | 2 | 49 | 0 |
+| `templates/RN-816-RL-67456-00.docx` | `gpt-6.1-sol` medium | 37 | 4 | 45 | 0 |
 
-(Baseline anterior à expansão: 19 / 0 / 67 / 0 nos dois documentos, sem LLM.)
+Sem LLM, o RN799 não produz falha. O RN-816 tem um defeito real que nenhuma versão anterior
+via: **quatro campos de referência cruzada vazios**, logo depois de "A Figura 77", "Figura 88",
+"Figura 91" e "Figura 92", apontam para indicadores que não existem no arquivo. As referências
+visíveis estão certas; os campos-fantasma não mostram nada hoje, mas ao atualizar os campos o Word
+escreve "Erro! Indicador não definido" no meio da frase (`RealDocumentCheckTests.DefeitosConhecidos`).
 
-Sem LLM os documentos de referência não produzem nenhuma falha — eles são conformes, e é isso
-que `RealDocumentCheckTests` protege. Com LLM aparecem achados semânticos genuínos (erros de
-concordância e regência, divergência entre as revisões da folha de rosto e do quadro,
-cabeçalho de seção fora do padrão).
+Com LLM aparecem achados semânticos genuínos: erros de concordância, regência e crase, erros
+de digitação ("Avalição", "gos" por "dos") e a assinatura do aprovador em branco no quadro.
+
+Saíram desta lista dois falsos positivos que as versões anteriores reportavam:
+- **Tarja "Emissão para Comentários do Cliente" no RN-816 (erro em `PS-024:4.1.2`, mais quatro
+  achados do LLM sobre "status de emissão incoerente").** A tarja só existe em cabeçalhos
+  `first`/`even` que o Word não exibe — agora é um aviso de conteúdo latente.
+- **"Divergência de revisão" folha de rosto × quadro (`PS-002:4.3.2`), nos dois documentos.**
+  Revisões do Cliente (0, 1, 2) e da PdA (0A, 0B, 00) são sistemas diferentes que se
+  correspondem por data; o check montava a própria evidência com os 40 primeiros parágrafos,
+  que nem chegavam à folha de rosto. Hoje usa o pacote compartilhado, que traz as convenções de
+  leitura, e a correspondência por data é conferida de forma determinística em `4.3.3 (letra i)`.
 
 > ⚠️ **Precisão do motor semântico.** Nem todo achado do LLM é correto. Numa das execuções,
 > `PS-002:4.7:Pda` acusou "numeração de páginas dentro do quadro Características" — o modelo
@@ -354,12 +436,13 @@ cabeçalho de seção fora do padrão).
 
 O tempo total de uma revisão com LLM fica em ~35 s: os checks rodam concorrentemente
 (`ChecklistEngine`, `maxParalelismo` = 6) e o pacote de evidências é montado uma vez por
-documento, não uma vez por regra.
+documento, não uma vez por regra. Sem LLM, o RN-816 (328 MB, quase tudo imagem) leva ~2,5 s.
 
 Arquivo de saída (`output/revisado.docx`):
 - Comentários OpenXML inseridos para cada violação detectada.
-- Campo `UpdateFieldsOnOpen=true` definido em `settings.xml` para forçar
-  recálculo de TOC, PAGE e referências ao abrir no Word.
+- Nada mais é alterado: o `settings.xml` fica como estava. O `UpdateFieldsOnOpen=true`
+  que o revisor gravava ali fazia o Word abrir perguntando "Deseja atualizar os campos?"
+  em todo documento revisado; quem quiser recalcular usa Ctrl+A e F9.
 
 ---
 
@@ -479,14 +562,17 @@ Detalhes importantes da extração:
 Veja `TODO_REGRAS.md` para o estado detalhado regra a regra. Próximas melhorias
 técnicas pendentes:
 
-1. **Paginação** — substituir heurística de texto por leitura direta de campos
-   `PAGE`/`NUMPAGES` no OOXML dos headers/footers.
-2. **Continuidade título/conteúdo** — detectar `w:br w:type="page"` no XML para
-   identificar títulos órfãos com precisão real (em vez de heurística).
-3. **Cabeçalhos padronizados** — distinguir `firstPage` / `even` / `default`
-   via tipos OOXML ao invés de unificar tudo na extração.
-4. **Mais testes de regressão** — usar `templates/` com documentos adicionais para
-   cobrir variações de padrão Cliente.
+1. **Convenção aviso × não conformidade** — vários checks devolvem só `Warning` quando o
+   requisito está ausente (sem índice, sem numeração, elementos gráficos fora do padrão) e o
+   item conta como "não aplicável". Decidir, regra a regra, o que deve reprovar.
+2. **Requisitos decidíveis ainda não cobertos** — quadro "ao final" (4.3.6.6), legendas em
+   Times 12 e tabelas centralizadas (4.3.6.3), ordem das entradas do índice (4.3.4.4),
+   citação de documentos com 15/18 caracteres (PS-018 4.4), "DOCUMENTO CANCELADO" (PS-024 4.3).
+3. **Gravação com menos memória** — o `CommentInserter` abre a cópia em modo de edição; no
+   RN-816 (328 MB) o pico chega a ~450 MB. Copiar as entradas do zip cruas e reescrever só
+   document/comments/settings resolveria.
+4. **Mais documentos reais** — `templates/` com outros clientes e com revisões 0A–0Z, para
+   exercitar a tarja de comentários de verdade.
 
 ---
 

@@ -14,8 +14,6 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class CodificacaoTecnicaCheck : IRuleCheck
 {
-    private const RegexOptions MatchOptions = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
-
     public ChecklistRef Ref { get; } = new("PS-018", "4.3", ChecklistPadrao.Cliente);
 
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
@@ -28,10 +26,6 @@ public sealed class CodificacaoTecnicaCheck : IRuleCheck
                 Array.Empty<Violation>(),
                 Note: "Profile sem 'codificacao.pdaRegex'."));
         }
-
-        var rotulos = (ctx.Profile.Get("codificacao.aliasesRotulo")
-            ?? "Codificação PdA|Codificação|Documento|Código do Documento|Código")
-            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var titulosAlias = (ctx.Profile.Get("quadroCaracteristicas.aliases")
             ?? "Características do Documento|Quadro de Características|Características")
@@ -55,15 +49,20 @@ public sealed class CodificacaoTecnicaCheck : IRuleCheck
                 && !MatchesDocumentPattern(stem, clienteRx)
                 && !MatchesAnyDocumentCode(stem, tableValues))
             {
+                // A mensagem diz o nome esperado, não o regex: quem recebe o comentário precisa
+                // saber como renomear o arquivo, não ler uma expressão regular.
+                var esperado = Codificacao.EncontrarEmQualquer(tableValues, pdaRx)?.Completo;
                 violations.Add(new Violation(
                     RuleId: Ref.ToString(),
                     Severity: Severity.Warning,
-                    Message: $"Nome do arquivo '{stem}' não corresponde ao padrão PdA ({pdaRx}) nem a um código do quadro Características.",
+                    Message: Codificacao.MensagemDeNomeDeArquivo(stem, esperado, Path.GetExtension(fileName)),
                     Location: new ViolationLocation(null, null, null, "Arquivo")));
             }
         }
 
-        // 2) Quadro "Características" should contain a value matching the PdA regex.
+        // 2) O quadro precisa trazer as duas codificações, cada uma no seu padrão. Antes o código
+        // achado pelo regex PdA era testado contra o regex do Cliente — um código PdA correto
+        // virava "não corresponde ao padrão Cliente", e um código do Cliente ausente passava.
         if (table is null)
         {
             violations.Add(new Violation(
@@ -74,30 +73,22 @@ public sealed class CodificacaoTecnicaCheck : IRuleCheck
         }
         else
         {
-            var codigo = FindCode(table, rotulos, pdaRx, clienteRx);
+            var celulas = table.Cells.Select(c => c.Text).ToList();
+            if (Codificacao.EncontrarEmQualquer(celulas, pdaRx) is null)
+            {
+                violations.Add(new Violation(
+                    RuleId: Ref.ToString(),
+                    Severity: Severity.Warning,
+                    Message: $"Nenhuma codificação no padrão PdA ({pdaRx}) localizada no quadro 'Características'.",
+                    Location: new ViolationLocation(null, null, null, "Quadro Características")));
+            }
 
-            if (string.IsNullOrWhiteSpace(codigo))
+            if (!string.IsNullOrWhiteSpace(clienteRx) && Codificacao.EncontrarEmQualquer(celulas, clienteRx) is null)
             {
                 violations.Add(new Violation(
                     RuleId: Ref.ToString(),
                     Severity: Severity.Warning,
-                    Message: "Não foi possível localizar campo de codificação no quadro 'Características'.",
-                    Location: new ViolationLocation(null, null, null, "Quadro Características")));
-            }
-            else if (!MatchesDocumentPattern(codigo, pdaRx))
-            {
-                violations.Add(new Violation(
-                    RuleId: Ref.ToString(),
-                    Severity: Severity.Error,
-                    Message: $"Codificação no quadro Características ('{codigo}') não corresponde ao padrão PdA ({pdaRx}).",
-                    Location: new ViolationLocation(null, null, null, "Quadro Características")));
-            }
-            else if (!string.IsNullOrWhiteSpace(clienteRx) && !MatchesDocumentPattern(codigo, clienteRx))
-            {
-                violations.Add(new Violation(
-                    RuleId: Ref.ToString(),
-                    Severity: Severity.Warning,
-                    Message: $"Codificação '{codigo}' não corresponde ao padrão Cliente ({clienteRx}).",
+                    Message: $"Nenhuma codificação no padrão do Cliente ({clienteRx}) localizada no quadro 'Características'.",
                     Location: new ViolationLocation(null, null, null, "Quadro Características")));
             }
         }
@@ -108,103 +99,6 @@ public sealed class CodificacaoTecnicaCheck : IRuleCheck
         return Task.FromResult(new RuleCheckResult(Ref, status, violations));
     }
 
-    private static string? FindCode(
-        ExtractedTable table,
-        IReadOnlyList<string> rotulos,
-        string pdaRx,
-        string? clienteRx)
-    {
-        var fields = QuadroCaracteristicas.FieldsByLabel(table);
-        var labeledValues = rotulos
-            .Select(rot => fields.FirstOrDefault(kv => kv.Key.Contains(rot, StringComparison.OrdinalIgnoreCase)).Value)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
-        foreach (var value in labeledValues)
-        {
-            var code = FindCodeInText(value, pdaRx, null);
-            if (!string.IsNullOrWhiteSpace(code))
-            {
-                return code;
-            }
-        }
-
-        foreach (var cell in table.Cells)
-        {
-            var code = FindCodeInText(cell.Text, pdaRx, null);
-            if (!string.IsNullOrWhiteSpace(code))
-            {
-                return code;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(clienteRx))
-        {
-            return null;
-        }
-
-        foreach (var value in labeledValues)
-        {
-            var code = FindCodeInText(value, clienteRx, null);
-            if (!string.IsNullOrWhiteSpace(code))
-            {
-                return code;
-            }
-        }
-
-        foreach (var cell in table.Cells)
-        {
-            var code = FindCodeInText(cell.Text, clienteRx, null);
-            if (!string.IsNullOrWhiteSpace(code))
-            {
-                return code;
-            }
-        }
-
-        return null;
-    }
-
-    private static string? FindCodeInText(string? text, string pdaRx, string? clienteRx)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        var pdaMatch = Regex.Match(text, SearchPattern(pdaRx), MatchOptions);
-        if (pdaMatch.Success)
-        {
-            return pdaMatch.Value;
-        }
-
-        if (!string.IsNullOrWhiteSpace(clienteRx))
-        {
-            var clienteMatch = Regex.Match(text, SearchPattern(clienteRx), MatchOptions);
-            if (clienteMatch.Success)
-            {
-                return clienteMatch.Value;
-            }
-        }
-
-        return null;
-    }
-
-    private static string SearchPattern(string regex)
-    {
-        var pattern = regex.Trim();
-        if (pattern.StartsWith('^'))
-        {
-            pattern = pattern[1..];
-        }
-
-        if (pattern.EndsWith('$'))
-        {
-            pattern = pattern[..^1];
-        }
-
-        return pattern + @"(?:-\d+)?";
-    }
-
     private static bool MatchesDocumentPattern(string? value, string? regex)
     {
         if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(regex))
@@ -212,23 +106,23 @@ public sealed class CodificacaoTecnicaCheck : IRuleCheck
             return false;
         }
 
-        var trimmed = value.Trim();
-        return Regex.IsMatch(trimmed, regex, MatchOptions)
-            || Regex.IsMatch(WithoutRevisionSuffix(trimmed), regex, MatchOptions);
+        return Codificacao.Casa(value, regex);
     }
-
-    private static string WithoutRevisionSuffix(string value) =>
-        Regex.Replace(value.Trim(), @"-\d+$", string.Empty, MatchOptions);
 
     private static bool MatchesAnyDocumentCode(string stem, IEnumerable<string> documentValues)
     {
         var normalizedStem = NormalizeCode(stem);
         return normalizedStem.Length > 0
             && documentValues.Any(value =>
-                NormalizeCode(value) == normalizedStem
-                || NormalizeCode(WithoutRevisionSuffix(value)) == normalizedStem);
+            {
+                // Igual, ou igual a menos do sufixo de revisão ("-00", "-0A", "-1").
+                var codigo = NormalizeCode(value);
+                return codigo == normalizedStem
+                    || (codigo.StartsWith(normalizedStem, StringComparison.Ordinal)
+                        && codigo.Length - normalizedStem.Length <= 2
+                        && value.TrimEnd().Length > 2 && value.TrimEnd()[^3..].Contains('-'));
+            });
     }
 
-    private static string NormalizeCode(string value) =>
-        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+    private static string NormalizeCode(string value) => Codificacao.Compacto(value);
 }

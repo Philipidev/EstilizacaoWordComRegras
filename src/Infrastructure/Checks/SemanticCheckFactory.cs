@@ -29,7 +29,7 @@ public sealed class SemanticCheckFactory
     public SemanticCheckFactory(ISemanticChecker semantic, IEvidenceSelector? evidence = null)
     {
         _semantic = semantic;
-        _evidence = evidence ?? new DefaultEvidenceSelector();
+        _evidence = evidence ?? DefaultEvidenceSelector.Compartilhado;
     }
 
     public IRuleCheck? Create(ChecklistEntry entry, DocumentContext ctx)

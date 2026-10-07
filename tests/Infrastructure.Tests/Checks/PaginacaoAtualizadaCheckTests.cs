@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 using WordComplianceValidator.Core.Profile;
@@ -30,28 +30,28 @@ public class PaginacaoAtualizadaCheckTests
     [Fact]
     public async Task Passes_when_footer_has_page_word()
     {
-        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "Página 1 de 10"));
+        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "Página 1 de 10"), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
     [Fact]
     public async Task Passes_when_header_has_page_number()
     {
-        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "logo", header: "Página 3"));
+        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "logo", header: "Página 3"), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 
     [Fact]
     public async Task Skipped_when_no_numbering_found()
     {
-        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "Apenas texto"));
+        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: "Apenas texto"), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Skipped);
     }
 
     [Fact]
     public async Task Skipped_when_no_footer()
     {
-        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: null));
+        var r = await new PaginacaoAtualizadaCheck().RunAsync(Ctx(footer: null), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Skipped);
     }
 
@@ -59,7 +59,7 @@ public class PaginacaoAtualizadaCheckTests
     public async Task Passes_when_footer_has_PAGE_field_even_without_text()
     {
         var r = await new PaginacaoAtualizadaCheck().RunAsync(
-            Ctx(footer: " ", fields: new[] { "PAGE", "NUMPAGES" }));
+            Ctx(footer: " ", fields: new[] { "PAGE", "NUMPAGES" }), TestContext.Current.CancellationToken);
         r.Status.Should().Be(CheckStatus.Passed);
     }
 }

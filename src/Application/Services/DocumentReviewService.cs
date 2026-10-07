@@ -14,7 +14,9 @@ public sealed record DocumentReviewReport(
     int Skipped,
     int Errored,
     IReadOnlyList<RuleCheckResult> Results,
-    IReadOnlyList<Violation> Violations);
+    IReadOnlyList<Violation> Violations,
+    // Comentários gravados no .docx: achados iguais no mesmo parágrafo viram um só.
+    int CommentsInserted = 0);
 
 public sealed class DocumentReviewService
 {
@@ -55,8 +57,9 @@ public sealed class DocumentReviewService
         var violations = results.SelectMany(r => r.Violations).ToList();
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputDocxPath)!);
+        var comentarios = 0;
         if (violations.Count > 0)
-            _commentInserter.InsertComments(documentPath, outputDocxPath, violations);
+            comentarios = _commentInserter.InsertComments(documentPath, outputDocxPath, violations);
         else
             File.Copy(documentPath, outputDocxPath, overwrite: true);
 
@@ -68,6 +71,7 @@ public sealed class DocumentReviewService
             Skipped: results.Count(r => r.Status == CheckStatus.Skipped),
             Errored: results.Count(r => r.Status == CheckStatus.Error),
             Results: results,
-            Violations: violations);
+            Violations: violations,
+            CommentsInserted: comentarios);
     }
 }

@@ -13,9 +13,12 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 /// </summary>
 public sealed class PaginacaoAtualizadaCheck : IRuleCheck
 {
-    private static readonly Regex PageWithTotal = new(@"\b\d+\s*(?:/|de)\s*\d+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex PageWord = new(@"P[áa]gina\s*\d+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex BareNumber = new(@"\b\d{1,4}\b", RegexOptions.Compiled);
+    // "X/Y" ou "X de Y" que não é pedaço de data: sem barra ou dígito colado dos dois lados.
+    // Sem isso, "15/03/2024" num cabeçalho virava total fixo "3".
+    private static readonly Regex PageWithTotal = new(@"(?<![\d/])\d+\s*(?:/|de)\s*\d+(?![\d/])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // Numeração rotulada ("FL.: 7/99", "Folha 3 de 10", "Página 2"). O fallback anterior aceitava
+    // qualquer número de até 4 dígitos — o "26" de "UP-26" bastava para dar a paginação por presente.
+    private static readonly Regex PageWord = new(@"\b(?:P[áa]g(?:ina)?|FL|Folha)\.?\s*:?\s*\d+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public PaginacaoAtualizadaCheck(
         ChecklistPadrao padrao = ChecklistPadrao.Cliente,
@@ -50,12 +53,9 @@ public sealed class PaginacaoAtualizadaCheck : IRuleCheck
             }
             else
             {
-                // 2) Fallback: texto literal "Página X de Y" ou número avulso.
+                // 2) Fallback: numeração rotulada no texto ("Página X de Y", "FL. X/Y").
                 var temTexto = headers.Concat(footers).Any(h =>
-                    !string.IsNullOrWhiteSpace(h.Text) &&
-                    (PageWithTotal.IsMatch(h.Text)
-                     || PageWord.IsMatch(h.Text)
-                     || BareNumber.IsMatch(h.Text)));
+                    !string.IsNullOrWhiteSpace(h.Text) && PageWord.IsMatch(h.Text));
 
                 if (!temTexto)
                 {

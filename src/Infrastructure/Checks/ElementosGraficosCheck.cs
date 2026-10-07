@@ -82,8 +82,8 @@ public sealed class ElementosGraficosCheck : IRuleCheck
 
         violations.Add(new Violation(Ref.ToString(), Severity.Warning,
             $"{foraDoCentro.Count} de {comAlinhamento.Count} elementos gráficos ({percentual:0.#}%) " +
-            $"não estão centralizados (alinhamentos: " +
-            $"{string.Join(", ", foraDoCentro.Select(p => p.Alignment).Distinct())}).",
+            $"não estão centralizados (alinhamento: " +
+            $"{string.Join(", ", foraDoCentro.Select(p => DocumentoTexto.NomeDoAlinhamento(p.Alignment)).Distinct())}).",
             new ViolationLocation(foraDoCentro[0].ParagraphId, null, foraDoCentro[0].SectionIndex,
                                   "Elementos gráficos")));
     }

@@ -14,7 +14,6 @@ namespace WordComplianceValidator.Infrastructure.Checks;
 public sealed class ConsistenciaIniciaisCheck : IRuleCheck
 {
     private static readonly Regex InitialsToken = new(@"\b[A-Z]{2,5}\b", RegexOptions.Compiled);
-    private const int FolhaRostoParagraphCount = 60;
 
     public ConsistenciaIniciaisCheck(ChecklistPadrao padrao = ChecklistPadrao.Cliente)
     {
@@ -44,9 +43,13 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
         var aprovAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloAprovador")
             ?? "Aprovado por|Aprovador");
 
+        // Fonte primária: a linha da revisão vigente no histórico do quadro. Antes só a leitura
+        // por rótulo existia, e nos quadros reais "Emissor"/"Verificador" são colunas do
+        // histórico: os três papéis saíam nulos e o check aprovava sem comparar nada.
+        var vigente = QuadroCaracteristicas.HistoricoDeRevisoes(table).LastOrDefault();
         var byLabel = QuadroCaracteristicas.FieldsByLabel(table);
-        var quadroElab = ExtractInitials(LookupAny(byLabel, elabAliases));
-        var quadroVerif = ExtractInitials(LookupAny(byLabel, verifAliases));
+        var quadroElab = Juntar(vigente?.Coluna(elabAliases)) ?? ExtractInitials(LookupAny(byLabel, elabAliases));
+        var quadroVerif = Juntar(vigente?.Coluna(verifAliases)) ?? ExtractInitials(LookupAny(byLabel, verifAliases));
         var quadroAprov = ExtractInitials(LookupAny(byLabel, aprovAliases));
 
         if (quadroElab is null && quadroVerif is null && quadroAprov is null)
@@ -66,14 +69,26 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
             }
         }
 
-        // Iniciais da "folha de rosto": coletadas dos primeiros N parágrafos.
-        var folhaTexto = string.Join(" ",
-            ctx.Structure.Paragraphs.Take(FolhaRostoParagraphCount).Select(p => p.Text));
+        if (quadroElab is null && quadroVerif is null && quadroAprov is null)
+        {
+            return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped, Array.Empty<Violation>(),
+                Note: "Iniciais de elaborador, verificador e aprovador não localizadas no quadro — nada a comparar."));
+        }
+
+        // Iniciais da folha de rosto: até o primeiro título, não um número fixo de parágrafos.
+        var folhaTexto = string.Join(" ", DocumentoTexto.FolhaDeRosto(ctx.Structure).Select(p => p.Text));
         var folhaInitials = InitialsToken.Matches(folhaTexto)
             .Select(m => m.Value)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        if (folhaInitials.Count == 0)
+        {
+            return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped, Array.Empty<Violation>(),
+                Note: "Nenhuma inicial localizada na folha de rosto — nada a comparar."));
+        }
+
         var violations = new List<Violation>();
+        var comparados = new List<string>();
         Compare("elaborador", quadroElab);
         Compare("verificador", quadroVerif);
         Compare("aprovador", quadroAprov);
@@ -81,19 +96,31 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
         void Compare(string papel, string? esperado)
         {
             if (string.IsNullOrEmpty(esperado)) return;
-            if (folhaInitials.Count == 0) return; // sem folha de rosto extraída
-            if (!folhaInitials.Contains(esperado))
+            comparados.Add($"{papel} {esperado}");
+            var ausentes = IniciaisDistintasCheck.Iniciais(esperado)
+                .Where(i => !folhaInitials.Contains(i))
+                .ToList();
+            if (ausentes.Count > 0)
             {
                 violations.Add(new Violation(
                     RuleId: Ref.ToString(),
                     Severity: Severity.Warning,
-                    Message: $"Iniciais do {papel} no quadro Características ('{esperado}') não constam na folha de rosto.",
+                    Message: $"Iniciais do {papel} no quadro Características ('{string.Join("/", ausentes)}') não constam na folha de rosto.",
                     Location: new ViolationLocation(null, null, null, "Folha de Rosto × Quadro Características")));
             }
         }
 
         var status = violations.Count == 0 ? CheckStatus.Passed : CheckStatus.Failed;
-        return Task.FromResult(new RuleCheckResult(Ref, status, violations));
+        var nota = vigente is null
+            ? $"Comparados: {string.Join("; ", comparados)}."
+            : $"Revisão {vigente.Revisao} — comparados: {string.Join("; ", comparados)}.";
+        return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: nota));
+    }
+
+    private static string? Juntar(string? campo)
+    {
+        var iniciais = IniciaisDistintasCheck.Iniciais(campo);
+        return iniciais.Count == 0 ? null : string.Join("/", iniciais);
     }
 
     private static IReadOnlyList<string> SplitAliases(string raw) =>

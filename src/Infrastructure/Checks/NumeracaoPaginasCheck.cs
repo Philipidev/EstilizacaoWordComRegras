@@ -75,9 +75,15 @@ public sealed class NumeracaoPaginasCheck : IRuleCheck
         // própria regra de que as páginas devem ser numeradas.
         if (ctx.Structure.Sections.Count > 1)
         {
-            var capaNumerada = headersComPagina.Concat(footersComPagina)
-                .Where(h => h.SectionIndex == 0)
-                .ToList();
+            // A folha de rosto é a primeira página: o que conta é o cabeçalho/rodapé que o Word
+            // exibe nela — o 'first' quando a seção tem "primeira página diferente", o 'default'
+            // caso contrário. Olhar todas as partes "da seção 0" acusava uma capa conforme, de
+            // cabeçalho de primeira página vazio, só porque o 'default' da seção tem PAGE.
+            var secaoDaCapa = ctx.Structure.Sections[0];
+            var partesDaCapa = secaoDaCapa.FirstPageHeaderFooters.Count > 0 || secaoDaCapa.TitlePage
+                ? secaoDaCapa.FirstPageHeaderFooters
+                : headers.Concat(footers).Where(h => h.SectionIndex == 0).ToList();
+            var capaNumerada = partesDaCapa.Where(TemCampoPagina).ToList();
             if (capaNumerada.Count > 0)
             {
                 violations.Add(new Violation(Ref.ToString(), Severity.Error,

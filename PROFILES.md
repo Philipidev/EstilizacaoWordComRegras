@@ -53,7 +53,7 @@ esse cliente" (configuração)**.
   "cliente": "Nome do Cliente",
   "versao": "1.0",
   "parameters": {
-    "codificacao.pdaRegex": "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$"
+    "codificacao.pdaRegex": "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$"
   }
 }
 ```
@@ -129,7 +129,7 @@ Usado pelas regras de **imparcialidade** (`PS-002:4.3.3 c`) e
 
 | Chave | Default | Para quê |
 |---|---|---|
-| `codificacao.pdaRegex`       | (sem default — obrigatório se quiser validar codificação PdA) | Regex que define o **padrão PdA**. |
+| `codificacao.pdaRegex`       | (sem default — obrigatório se quiser validar codificação PdA) | Regex do **código PdA sem o sufixo de revisão** (15 caracteres, ex.: `RN-816-RL-67456`). A busca aceita sozinha o sufixo `-00`/`-0A`. Atenção: `QD5-PDA-26-04-095-RT` é a codificação do **Cliente** (MRN), apesar do "PDA" no meio. |
 | `codificacao.clienteRegex`   | opcional | Regex que define o **padrão Cliente**. |
 | `codificacao.aliasesRotulo`  | `Codificação PdA\|Codificação\|Código do Documento\|Documento\|Código` | Rótulos do quadro que **contêm** o código. |
 | `revisao.aliasesRotulo`      | `Revisão\|Rev.\|Rev` | Rótulos do campo de revisão. |
@@ -246,8 +246,8 @@ isolado.
 | Chave | Default | Para quê |
 |---|---|---|
 | `semantico.regrasHabilitadas` | **(sem default — vazio = motor desligado)** | Lista de `Ref` separada por `\|` que o motor semântico genérico pode assumir. Aceita `*` para todas as entradas sem check dedicado. |
-| `semantico.modelo.default` | (usa `OpenAI:Model`, hoje `gpt-5.6-sol`) | Modelo padrão das regras semânticas. |
-| `semantico.modelo.<Ref>` | (usa o default) | Override de modelo por regra, ex.: `"semantico.modelo.PS-018:4.3:Pda": "gpt-5.6-terra"`. |
+| `semantico.modelo.default` | (usa `OpenAI:Model`, hoje `gpt-6.1-sol`) | Modelo padrão das regras semânticas deste cliente. |
+| `semantico.modelo.<Ref>` | (usa o default) | Override de modelo por regra, ex.: `"semantico.modelo.PS-024:4.3:Cliente": "gpt-6-luna"`. |
 
 > ⚠️ **Sem `semantico.regrasHabilitadas`, nenhuma regra semântica roda** — mesmo com a chave
 > da OpenAI configurada e sem `--no-llm`. A habilitação é allow-list explícita, nunca
@@ -258,14 +258,14 @@ A allow-list é explícita de propósito: o PS-005 inteiro (fluxo Meridian, e-ma
 autoridade do aprovador) é indecidível a partir do `.docx`, e habilitá-lo gastaria tokens
 para produzir "não aplicável" em todos os itens.
 
-**Tiering de modelo.** A família GPT-5.6 tem três níveis — Sol (mais forte), Terra
-(equilibrado) e Luna (rápido/barato). Rodar Sol em 20+ regras por documento é caro, e várias
-delas são checagem simples de presença de texto:
+**Modelo.** O padrão é o `gpt-6.1-sol` com raciocínio `medium` para todas as regras,
+definido em `appsettings.json` (`OpenAI:Model`, `OpenAI:ReasoningEffort`). Com o cache de prompt
+acertando ~93% da entrada, um documento custa ~US$ 0,08 — trocar regras simples por um modelo
+menor economiza pouco. Se precisar, o override por regra continua disponível:
 
 ```json
 "semantico.regrasHabilitadas": "PS-002:4.2:Cliente|PS-018:4.4:Pda|PS-024:4.3:Cliente",
-"semantico.modelo.default": "gpt-5.6-sol",
-"semantico.modelo.PS-024:4.3:Cliente": "gpt-5.6-luna"
+"semantico.modelo.PS-024:4.3:Cliente": "gpt-6-luna"
 ```
 
 Uma entrada só é assumida pelo motor se **também** tiver a coluna `Descrição` preenchida no
@@ -307,7 +307,7 @@ Mapa rápido de qual regra usa qual parâmetro:
 | `PS-002:4.3.6.5` (Numeração das páginas) | `numeracao.exigirDireita` |
 | `PS-002:4.3.8` (Apêndice e anexo) | `quadroCaracteristicas.aliases` |
 | `PS-024:4.1.2` / `4.1.3` / `4.1.4` (Tarjas de emissão) | `tarja.comentariosCliente`, `tarja.naoValidoExecucao`, `tarja.exigeNaoValidoExecucao`, `quadroCaracteristicas.aliases`, `revisao.aliasesRotulo` |
-| Regras do motor semântico (23 em `exemplo.json`) | `semantico.regrasHabilitadas`, `semantico.modelo.default`, `semantico.modelo.<Ref>` |
+| Regras do motor semântico (18 em `exemplo.json`) | `semantico.regrasHabilitadas`, `semantico.modelo.default`, `semantico.modelo.<Ref>` |
 
 ---
 
@@ -328,7 +328,7 @@ caso de dúvida, leia o arquivo.
     "iniciais.rotuloVerificador": "Verificado por|Verificador|Verificador Técnico",
     "iniciais.rotuloAprovador": "Aprovado por|Aprovador",
 
-    "codificacao.pdaRegex": "^[A-Z]{2}\\d{1,3}-PDA-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
+    "codificacao.pdaRegex": "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$",
     "codificacao.clienteRegex": "^[A-Z0-9]{2,4}-[A-Z]{2,4}-\\d{2}-\\d{2}-\\d{3}-[A-Z]{2}$",
     "codificacao.aliasesRotulo": "Codificação PdA|Codificação|Código do Documento|Documento|Código",
 
@@ -357,9 +357,7 @@ caso de dúvida, leia o arquivo.
 
     "semantico.regrasHabilitadas": "PS-002:4.2:Cliente|PS-002:4.3.4.2:Pda|… (23 refs no total)",
 
-    "semantico.modelo.default": "gpt-5.6-sol",
-    "semantico.modelo.PS-002:4.3.4.2:Pda": "gpt-5.6-luna",
-    "semantico.modelo.PS-018:4.3:Pda": "gpt-5.6-terra"
+    "semantico.modelo.PS-024:4.3:Cliente": "gpt-6-luna"
   }
 }
 ```

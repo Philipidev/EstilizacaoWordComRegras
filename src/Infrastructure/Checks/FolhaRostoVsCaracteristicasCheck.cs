@@ -1,63 +1,48 @@
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
-using WordComplianceValidator.Core.Models;
 
 namespace WordComplianceValidator.Infrastructure.Checks;
 
 /// <summary>
-/// PS-002 4.3.2 Cliente — Folha de Rosto: compatibilidade entre informações
-/// da folha de rosto e o quadro "Características do Documento" (avaliação semântica via LLM).
+/// PS-002 4.3.2 Cliente — Folha de Rosto: padrão de folha de rosto do cliente e compatibilidade
+/// entre a folha de rosto e o quadro "Características do Documento" (avaliação semântica).
+/// <para>
+/// Antes este check montava a própria evidência: os 40 primeiros parágrafos do documento como
+/// "folha de rosto" e o quadro achatado em rótulo→valor. Nos documentos de referência a folha
+/// índice do Cliente sozinha ocupa ~200 parágrafos de célula, então código, título e cliente
+/// nunca chegavam ao avaliador ("não constam na folha de rosto apresentada"), e o quadro
+/// achatado misturava as colunas PdA e Cliente. Resultado: reprovação nos dois documentos
+/// conformes. Agora ele usa o mesmo pacote de evidências do motor genérico — que preserva as
+/// colunas e traz a capa inteira — e sai mais barato, porque esse pacote já está no cache.
+/// </para>
 /// </summary>
 public sealed class FolhaRostoVsCaracteristicasCheck : IRuleCheck
 {
-    private readonly ISemanticChecker _semantic;
+    private static readonly ChecklistRef Item = new("PS-002", "4.3.2", ChecklistPadrao.Cliente);
 
-    public ChecklistRef Ref { get; } = new("PS-002", "4.3.2", ChecklistPadrao.Cliente);
+    private readonly SemanticChecklistCheck _avaliacao;
 
-    public FolhaRostoVsCaracteristicasCheck(ISemanticChecker semantic)
+    public FolhaRostoVsCaracteristicasCheck(ISemanticChecker semantic, IEvidenceSelector? evidence = null)
     {
-        _semantic = semantic;
+        var entrada = new ChecklistEntry(
+            Ref: Item,
+            Revisao: null,
+            ProcedimentoTitulo: "Edição de Documentos Técnicos",
+            Assunto: "Folha de Rosto",
+            Titulo: "Folha de Rosto",
+            Descricao:
+                "Verificar se o padrão de folha de rosto do cliente foi adotado (quando aplicável) e " +
+                "se há compatibilidade entre as informações da folha de rosto e do quadro " +
+                "“Características do Documento”, assegurando coerência e rastreabilidade. Compare " +
+                "codificação (PdA e Cliente), título, cliente/contratante, revisões e datas de emissão.",
+            IaAutomatizavel: true,
+            Observacao: null);
+
+        _avaliacao = new SemanticChecklistCheck(entrada, semantic, evidence ?? DefaultEvidenceSelector.Compartilhado);
     }
 
-    public async Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
-    {
-        var titulosAlias = (ctx.Profile.Get("quadroCaracteristicas.aliases")
-            ?? "Características do Documento|Quadro de Características|Características")
-            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public ChecklistRef Ref => Item;
 
-        var quadro = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
-        if (quadro is null)
-        {
-            return new RuleCheckResult(Ref, CheckStatus.Skipped,
-                Array.Empty<Violation>(),
-                Note: "Quadro 'Características do Documento' não localizado.");
-        }
-        var quadroDump = string.Join("\n",
-            QuadroCaracteristicas.FieldsByLabel(quadro).Select(kv => $"- {kv.Key}: {kv.Value}"));
-
-        // Folha de rosto = primeiros parágrafos antes do primeiro Heading 1.
-        var folhaRosto = string.Join("\n",
-            ctx.Structure.Paragraphs.Take(40).Select(p => p.Text).Where(s => !string.IsNullOrWhiteSpace(s)));
-
-        var instrucao =
-            "Verifique se as informações da folha de rosto são coerentes e compatíveis com o " +
-            "quadro 'Características do Documento' (código, título, revisão, cliente, datas). " +
-            "Aponte divergências relevantes.";
-        var conteudo = $"### Folha de rosto\n{folhaRosto}\n\n### Quadro Características\n{quadroDump}";
-
-        var verdict = await _semantic.EvaluateAsync(instrucao, conteudo, cancellationToken);
-
-        if (verdict.Conforme)
-            return new RuleCheckResult(Ref, CheckStatus.Passed, Array.Empty<Violation>(), Note: verdict.Justificativa);
-
-        return new RuleCheckResult(Ref, CheckStatus.Failed,
-            new[] {
-                new Violation(
-                    RuleId: Ref.ToString(),
-                    Severity: Severity.Warning,
-                    Message: $"Incompatibilidade folha de rosto × quadro 'Características': {verdict.Justificativa}",
-                    Location: new ViolationLocation(null, null, null, "Folha de Rosto / Quadro Características"))
-            },
-            Note: verdict.Justificativa);
-    }
+    public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default) =>
+        _avaliacao.RunAsync(ctx, cancellationToken);
 }

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -59,7 +59,7 @@ public class SemanticChecklistCheckTests
             SemanticStatus.NaoAplicavel, [], "Documento não possui apêndices."));
 
         var result = await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector())
-            .RunAsync(Contexto());
+            .RunAsync(Contexto(), TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(CheckStatus.Skipped);
         result.Violations.Should().BeEmpty();
@@ -75,7 +75,7 @@ public class SemanticChecklistCheckTests
             "Há violação de concordância."));
 
         var result = await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector())
-            .RunAsync(Contexto());
+            .RunAsync(Contexto(), TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(CheckStatus.Failed);
         result.Violations.Should().ContainSingle()
@@ -92,7 +92,7 @@ public class SemanticChecklistCheckTests
 
         var ctx = Contexto();
         var result = await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector())
-            .RunAsync(ctx);
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
 
         var location = result.Violations.Single().Location;
         location!.ParagraphId.Should().NotBeNullOrEmpty();
@@ -109,7 +109,7 @@ public class SemanticChecklistCheckTests
             SemanticStatus.Conforme, [], "Texto formal e correto."));
 
         var result = await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector())
-            .RunAsync(Contexto());
+            .RunAsync(Contexto(), TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(CheckStatus.Passed);
         result.Violations.Should().BeEmpty();
@@ -121,7 +121,7 @@ public class SemanticChecklistCheckTests
         var fake = new FakeSemanticChecker(new SemanticEvaluation(SemanticStatus.Conforme, []));
         var entrada = Entrada("Verificar se o documento utiliza linguagem formal e correção gramatical.");
 
-        await new SemanticChecklistCheck(entrada, fake, new DefaultEvidenceSelector()).RunAsync(Contexto());
+        await new SemanticChecklistCheck(entrada, fake, new DefaultEvidenceSelector()).RunAsync(Contexto(), TestContext.Current.CancellationToken);
 
         fake.UltimaInstrucao.Should().Contain("linguagem formal e correção gramatical");
         fake.UltimaInstrucao.Should().Contain("Ortografia e Gramática");
@@ -134,10 +134,10 @@ public class SemanticChecklistCheckTests
     {
         var fake = new FakeSemanticChecker(new SemanticEvaluation(SemanticStatus.Conforme, []));
 
-        await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector(), "gpt-5.6-luna")
-            .RunAsync(Contexto());
+        await new SemanticChecklistCheck(Entrada(), fake, new DefaultEvidenceSelector(), "gpt-6-luna")
+            .RunAsync(Contexto(), TestContext.Current.CancellationToken);
 
-        fake.UltimoModelo.Should().Be("gpt-5.6-luna");
+        fake.UltimoModelo.Should().Be("gpt-6-luna");
     }
 
     // --- Fábrica / allow-list ---
@@ -179,14 +179,14 @@ public class SemanticChecklistCheckTests
     {
         var profile = new ClientProfile("Teste", "1.0", new Dictionary<string, string>
         {
-            ["semantico.modelo.default"] = "gpt-5.6-sol",
-            ["semantico.modelo.PS-002:4.2:Cliente"] = "gpt-5.6-luna"
+            ["semantico.modelo.default"] = "gpt-6.1-sol",
+            ["semantico.modelo.PS-002:4.2:Cliente"] = "gpt-6-luna"
         });
 
         SemanticCheckFactory.ModeloPara(new ChecklistRef("PS-002", "4.2", ChecklistPadrao.Cliente), profile)
-            .Should().Be("gpt-5.6-luna");
+            .Should().Be("gpt-6-luna");
         SemanticCheckFactory.ModeloPara(new ChecklistRef("PS-018", "4.4", ChecklistPadrao.Pda), profile)
-            .Should().Be("gpt-5.6-sol");
+            .Should().Be("gpt-6.1-sol");
     }
 
     // --- Parsing da resposta do modelo ---

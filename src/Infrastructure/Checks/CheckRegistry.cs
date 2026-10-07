@@ -40,8 +40,13 @@ public static class CheckRegistry
             new LocalizacaoCodificacaoCheck(),
             new CodificacaoClienteCheck(),
             new EvolucaoDocumentoCheck(),
-            new ReferenciasCruzadasCheck(),
-            new CoerenciaRevisoesCheck(),
+            new ReferenciasCruzadasCheck(ChecklistPadrao.Cliente),
+            // Os itens (letra h/i) têm o mesmo texto nos dois padrões. As variantes :Pda caíam no
+            // avaliador semântico, que não enxerga indicador inexistente nem compara datas de
+            // emissão — e cobrava tokens por uma regra que o OOXML decide.
+            new ReferenciasCruzadasCheck(ChecklistPadrao.Pda),
+            new CoerenciaRevisoesCheck(ChecklistPadrao.Cliente),
+            new CoerenciaRevisoesCheck(ChecklistPadrao.Pda),
             new ContinuidadeTituloConteudoCheck(ChecklistPadrao.Cliente),
             new ContinuidadeTituloConteudoCheck(ChecklistPadrao.Pda),
 
@@ -73,7 +78,8 @@ public static class CheckRegistry
         // Estes dois aceitam ISemanticChecker como reforço opcional; sem LLM caem no
         // caminho heurístico puro.
         checks.Add(new FolhaRostoCheck(semantic));
-        checks.Add(new CabecalhosPadronizadosCheck(semantic));
+        checks.Add(new CabecalhosPadronizadosCheck(semantic, ChecklistPadrao.Cliente));
+        checks.Add(new CabecalhosPadronizadosCheck(semantic, ChecklistPadrao.Pda));
 
         // Depende obrigatoriamente de avaliação semântica.
         if (semantic is not null)

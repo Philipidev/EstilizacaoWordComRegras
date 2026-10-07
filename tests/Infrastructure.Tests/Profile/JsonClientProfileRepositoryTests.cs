@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Infrastructure.Profile;
 using Xunit;
 
@@ -28,7 +28,7 @@ public class JsonClientProfileRepositoryTests
         """);
         try
         {
-            var profile = await new JsonClientProfileRepository().LoadAsync(path);
+            var profile = await new JsonClientProfileRepository().LoadAsync(path, TestContext.Current.CancellationToken);
             profile.Cliente.Should().Be("X");
             profile.GetInt("logomarcas.minimo").Should().Be(2);
         }

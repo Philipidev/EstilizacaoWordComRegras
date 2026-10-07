@@ -34,6 +34,15 @@ public sealed class IniciaisDistintasCheck : IRuleCheck
                 Note: "Quadro 'Características do Documento' não localizado."));
         }
 
+        // Fonte primária: a linha da revisão vigente no histórico, onde elaborador (Emissor) e
+        // verificador são colunas. A leitura por rótulo abaixo cobre quadros rótulo→valor.
+        var vigente = QuadroCaracteristicas.HistoricoDeRevisoes(table).LastOrDefault();
+        if (vigente?.Coluna(elabAliases) is { } elabHist && vigente.Coluna(verifAliases) is { } verifHist
+            && Iniciais(elabHist).Count > 0 && Iniciais(verifHist).Count > 0)
+        {
+            return Task.FromResult(Comparar(vigente.Revisao, elabHist, verifHist));
+        }
+
         var fields = QuadroCaracteristicas.FieldsByLabel(table);
         var elab = ExtractInitials(LookupAny(fields, elabAliases));
         var verif = ExtractInitials(LookupAny(fields, verifAliases));
@@ -63,12 +72,12 @@ public sealed class IniciaisDistintasCheck : IRuleCheck
                 Message: $"Não foi possível extrair iniciais de '{string.Join("/", elabAliases)}' ou '{string.Join("/", verifAliases)}' no quadro 'Características'.",
                 Location: new ViolationLocation(null, null, null, "Quadro Características")));
         }
-        else if (string.Equals(elab, verif, StringComparison.OrdinalIgnoreCase))
+        else if (Iniciais(elab).Intersect(Iniciais(verif), StringComparer.OrdinalIgnoreCase).Any())
         {
             violations.Add(new Violation(
                 RuleId: Ref.ToString(),
                 Severity: Severity.Error,
-                Message: $"Iniciais de elaborador e verificador são idênticas ('{elab}'). Devem ser distintas (imparcialidade).",
+                Message: $"Iniciais de elaborador ('{elab}') e verificador ('{verif}') coincidem. Devem ser distintas (imparcialidade).",
                 Location: new ViolationLocation(null, null, null, "Quadro Características")));
         }
 
@@ -77,6 +86,36 @@ public sealed class IniciaisDistintasCheck : IRuleCheck
                    : CheckStatus.Skipped;
         return Task.FromResult(new RuleCheckResult(Ref, status, violations));
     }
+
+    /// <summary>
+    /// Compara conjuntos, não o primeiro token: com mais de um elaborador ("ABC/XYZ") e o
+    /// verificador "XYZ", a comparação pelo primeiro token aprovava alguém verificando o
+    /// próprio trabalho.
+    /// </summary>
+    private RuleCheckResult Comparar(string revisao, string elaborador, string verificador)
+    {
+        var comuns = Iniciais(elaborador).Intersect(Iniciais(verificador), StringComparer.OrdinalIgnoreCase).ToList();
+        if (comuns.Count == 0)
+            return new RuleCheckResult(Ref, CheckStatus.Passed, Array.Empty<Violation>(),
+                Note: $"Revisão {revisao}: elaborador '{elaborador}', verificador '{verificador}'.");
+
+        return new RuleCheckResult(Ref, CheckStatus.Failed,
+        [
+            new Violation(Ref.ToString(), Severity.Error,
+                $"Na revisão {revisao}, '{string.Join("/", comuns)}' aparece como elaborador ('{elaborador}') " +
+                $"e como verificador ('{verificador}'). Elaborador e verificador técnico devem ser pessoas distintas.",
+                new ViolationLocation(null, null, null, "Quadro Características"))
+        ]);
+    }
+
+    /// <summary>Iniciais de um campo: tokens de 2 a 5 letras maiúsculas ("BB/GFC" → BB, GFC).</summary>
+    internal static IReadOnlyList<string> Iniciais(string? campo) =>
+        (campo ?? string.Empty)
+            .Split(new[] { ' ', '\t', '\n', '/', '-', ',', '(', ')', '.', ';', ':', '&', '+' },
+                   StringSplitOptions.RemoveEmptyEntries)
+            .Where(s => s.Length is >= 2 and <= 5 && s.All(c => char.IsLetter(c) && char.IsUpper(c)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static IReadOnlyList<string> SplitAliases(string raw) =>
         raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

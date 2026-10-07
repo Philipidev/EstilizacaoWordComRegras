@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
@@ -32,7 +32,7 @@ public class ChecklistEngineTests
     {
         var engine = new ChecklistEngine(Array.Empty<IRuleCheck>());
         var catalog = new[] { Entry("PS-002", "4.2", ChecklistPadrao.Cliente, iaAuto: false) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results.Should().HaveCount(1);
         results[0].Status.Should().Be(CheckStatus.Skipped);
         results[0].Note.Should().Contain("manual");
@@ -43,7 +43,7 @@ public class ChecklistEngineTests
     {
         var engine = new ChecklistEngine(Array.Empty<IRuleCheck>());
         var catalog = new[] { Entry("PS-002", "4.1", ChecklistPadrao.Cliente, iaAuto: true) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results[0].Status.Should().Be(CheckStatus.Skipped);
         results[0].Note.Should().Contain("não implementado");
     }
@@ -55,7 +55,7 @@ public class ChecklistEngineTests
                                   CheckStatus.Passed);
         var engine = new ChecklistEngine(new[] { check });
         var catalog = new[] { Entry("PS-002", "4.1", ChecklistPadrao.Cliente, iaAuto: true) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results[0].Status.Should().Be(CheckStatus.Passed);
     }
 
@@ -66,7 +66,7 @@ public class ChecklistEngineTests
                                   throws: new InvalidOperationException("boom"));
         var engine = new ChecklistEngine(new[] { check });
         var catalog = new[] { Entry("PS-002", "4.1", ChecklistPadrao.Cliente, iaAuto: true) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results[0].Status.Should().Be(CheckStatus.Error);
         results[0].Note.Should().Contain("boom");
     }
@@ -79,7 +79,7 @@ public class ChecklistEngineTests
                                   CheckStatus.Failed);
         var engine = new ChecklistEngine(new[] { check });
         var catalog = new[] { Entry("PS-024", "4.1.2", ChecklistPadrao.Cliente, iaAuto: false) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results[0].Status.Should().Be(CheckStatus.Failed);
     }
 
@@ -90,7 +90,7 @@ public class ChecklistEngineTests
                                   CheckStatus.Failed);
         var engine = new ChecklistEngine(new[] { check }, honrarColunaIa: true);
         var catalog = new[] { Entry("PS-024", "4.1.2", ChecklistPadrao.Cliente, iaAuto: false) };
-        var results = await engine.RunAsync(EmptyContext(), catalog);
+        var results = await engine.RunAsync(EmptyContext(), catalog, TestContext.Current.CancellationToken);
         results[0].Status.Should().Be(CheckStatus.Skipped);
         results[0].Note.Should().Contain("--only-ia-sim");
     }

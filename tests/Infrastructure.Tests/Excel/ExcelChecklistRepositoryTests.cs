@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using WordComplianceValidator.Core.Checklist;
 using WordComplianceValidator.Infrastructure.Excel;
 using Xunit;
@@ -24,7 +24,7 @@ public class ExcelChecklistRepositoryTests
     public async Task Loads_all_86_entries_with_expected_distribution()
     {
         var repo = new ExcelChecklistRepository();
-        var entries = await repo.LoadAsync(ChecklistPath());
+        var entries = await repo.LoadAsync(ChecklistPath(), TestContext.Current.CancellationToken);
 
         entries.Should().HaveCount(86);
         entries.Count(e => e.IaAutomatizavel).Should().Be(21);

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace WordComplianceValidator.Infrastructure.Tests.Cli;
 
@@ -23,13 +23,13 @@ public class CliExitCodeTests
     [Fact]
     public void Documento_conforme_sai_com_zero()
     {
-        // O documento conforme é o RN799. O RN-816 deixou de servir aqui: ele carrega tarja de
-        // emissão obsoleta (ver RealDocumentCheckTests.DefeitosConhecidos), e usá-lo faria este
-        // teste exigir que o validador ignorasse um defeito real para continuar verde.
+        // O documento conforme é o RN799. O RN-816 não serve aqui: ele tem referências cruzadas
+        // apontando para indicadores inexistentes (ver RealDocumentCheckTests.DefeitosConhecidos),
+        // e usá-lo faria este teste exigir que o validador ignorasse um defeito real.
         var (exitCode, saida) = RodarReview(ProfilePadrao(), "RN799RL6496600.docx");
 
         exitCode.Should().Be(ExitAprovado, $"documento de referência é conforme.\n{saida}");
-        saida.Should().Contain("nenhuma não conformidade");
+        saida.Should().Contain("Nenhuma não conformidade");
     }
 
     [Fact]
@@ -42,10 +42,48 @@ public class CliExitCodeTests
 
         exitCode.Should().Be(ExitReprovado,
             $"há violação Error e o gate de CI depende disso.\n{saida}");
-        saida.Should().Contain("não conformes");
+        saida.Should().Contain("O documento precisa de ajustes");
+    }
+
+    /// <summary>
+    /// Erro de digitação: código 1, uma frase em português e onde buscar ajuda — antes eram
+    /// "Option '--doc' is required." em inglês seguido da ajuda inteira.
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "review" }, "Falta a opção obrigatória --doc")]
+    [InlineData(new[] { "comando-que-nao-existe" }, "comando-que-nao-existe")]
+    public void Erro_de_linha_de_comando_sai_com_um_e_explica_em_portugues(string[] argumentos, string esperado)
+    {
+        var (exitCode, saida) = Rodar(argumentos);
+
+        exitCode.Should().Be(1, saida);
+        // "·" só sobrevive se a saída redirecionada for UTF-8 (antes virava "?").
+        saida.Should().Contain(esperado).And.Contain("--help  ·  Modo guiado: Revisor")
+            .And.NotContain("is required").And.NotContain("Usage:");
     }
 
     // --- infraestrutura ---
+
+    private static (int ExitCode, string Saida) Rodar(params string[] argumentos)
+    {
+        var psi = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            WorkingDirectory = RepoRoot(),
+            // Redirecionado, o CLI escreve UTF-8 independente da code page do console.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Revisor.dll"));
+        foreach (var a in argumentos) psi.ArgumentList.Add(a);
+
+        using var proc = Process.Start(psi)!;
+        var saida = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
+        proc.WaitForExit(milliseconds: 60_000).Should().BeTrue();
+        return (proc.ExitCode, saida);
+    }
 
     private static (int ExitCode, string Saida) RodarReview(
         string profilePath, string documento = "RN-816-RL-67456-00.docx")
@@ -63,6 +101,8 @@ public class CliExitCodeTests
             // O --checklist default é resolvido a partir do diretório atual, então o processo
             // roda a partir da raiz do repositório.
             WorkingDirectory = RepoRoot(),
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var arg in new[]
                  {
@@ -117,7 +157,7 @@ public class CliExitCodeTests
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 8; i++)
         {
-            if (File.Exists(Path.Combine(dir, "EstilizacaoWordComRegras.sln"))) return dir;
+            if (File.Exists(Path.Combine(dir, "EstilizacaoWordComRegras.slnx"))) return dir;
             dir = Path.GetFullPath(Path.Combine(dir, ".."));
         }
         throw new DirectoryNotFoundException("Raiz do repositório não encontrada.");

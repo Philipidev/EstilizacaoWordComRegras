@@ -73,8 +73,8 @@ public sealed class FormatacaoCorpoCheck : IRuleCheck
                 .Where(p => !string.Equals(p.Alignment, alinhamentoEsperado, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             AvaliarProporcao(violations, alinhamentoDivergente.Count, comAlinhamento.Count, tolerancia,
-                descricao: $"alinhamento diferente de '{alinhamentoEsperado}'",
-                exemplos: alinhamentoDivergente.Select(p => $"'{Resumo(p.Text)}' → {p.Alignment}"),
+                descricao: $"alinhamento diferente de {DocumentoTexto.NomeDoAlinhamento(alinhamentoEsperado)}",
+                exemplos: alinhamentoDivergente.Select(p => $"'{Resumo(p.Text)}' → {DocumentoTexto.NomeDoAlinhamento(p.Alignment)}"),
                 ruleId: Ref.ToString());
         }
 
@@ -130,7 +130,7 @@ public sealed class FormatacaoCorpoCheck : IRuleCheck
                 violations.Add(new Violation(ruleId, Severity.Error,
                     $"Margem {nome} fora do padrão em {fora.Count} seção(ões): " +
                     $"esperado {esperada.Value:0} twips, encontrado " +
-                    string.Join(", ", fora.Select(s => $"seção {s.Index}={seletor(s):0}")),
+                    string.Join(", ", fora.Select(s => $"seção {s.Index + 1}={seletor(s):0}")),
                     new ViolationLocation(null, null, fora[0].Index, $"Margem {nome}")));
             }
         }

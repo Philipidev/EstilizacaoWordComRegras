@@ -74,6 +74,18 @@ public sealed class DocxFixtureBuilder
         return this;
     }
 
+    /// <summary>Parágrafo do corpo a partir de XML cru de <c>w:p</c> (prefixos de <see cref="Namespaces"/>).</summary>
+    public DocxFixtureBuilder ParagrafoXml(string paragrafoXml)
+    {
+        _blocos.Add(body =>
+        {
+            var bruto = new Body($"<w:body {Namespaces}>{paragrafoXml}</w:body>");
+            foreach (var filho in bruto.ChildElements.ToList())
+                body.AppendChild(filho.CloneNode(true));
+        });
+        return this;
+    }
+
     /// <summary>Tabela com número arbitrário de colunas por linha, como a folha índice do cliente.</summary>
     public DocxFixtureBuilder TabelaGrade(params string[][] linhas)
     {
@@ -128,6 +140,66 @@ public sealed class DocxFixtureBuilder
         return this;
     }
 
+    /// <summary>
+    /// Cabeçalho a partir de XML cru (conteúdo de <c>w:hdr</c>), para estruturas que o SDK
+    /// tipado torna verbosas: marca d'água VML, caixa de texto em <c>mc:AlternateContent</c>.
+    /// Os prefixos w, v, o, w10, mc, wps, a e wp já estão declarados.
+    /// </summary>
+    public DocxFixtureBuilder CabecalhoXml(string conteudoXml, string kind = "default")
+    {
+        _headers.Add((kind, header =>
+        {
+            var xml = $"<w:hdr {Namespaces}>{conteudoXml}</w:hdr>";
+            var bruto = new Header(xml);
+            foreach (var filho in bruto.ChildElements.ToList())
+                header.AppendChild(filho.CloneNode(true));
+            foreach (var ns in bruto.NamespaceDeclarations)
+                header.AddNamespaceDeclaration(ns.Key, ns.Value);
+        }
+        ));
+        return this;
+    }
+
+    /// <summary>Marca d'água do Word: texto no atributo <c>string</c> de um v:textpath.</summary>
+    public DocxFixtureBuilder MarcaDagua(string texto, string kind = "default") =>
+        CabecalhoXml(
+            "<w:p><w:r><w:pict><v:shape id=\"PowerPlusWaterMarkObject1\" type=\"#_x0000_t136\" " +
+            "style=\"position:absolute;width:400pt;height:40pt;rotation:315\" fillcolor=\"red\" stroked=\"f\">" +
+            $"<v:textpath style=\"font-family:&quot;Times New Roman&quot;\" string=\"{texto}\"/>" +
+            "</v:shape></w:pict></w:r></w:p>", kind);
+
+    public const string Namespaces =
+        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" " +
+        "xmlns:v=\"urn:schemas-microsoft-com:vml\" " +
+        "xmlns:o=\"urn:schemas-microsoft-com:office:office\" " +
+        "xmlns:w10=\"urn:schemas-microsoft-com:office:word\" " +
+        "xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" " +
+        "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" " +
+        "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" " +
+        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" " +
+        "xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" " +
+        "xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\"";
+
+    private bool? _primeiraPaginaDiferente;
+    private bool? _paresImparesDiferentes;
+
+    /// <summary>
+    /// Controla <c>w:titlePg</c>. Sem chamada, segue o Word: ligado quando há cabeçalho ou
+    /// rodapé 'first' — é o que o Word faz ao criar um.
+    /// </summary>
+    public DocxFixtureBuilder PrimeiraPaginaDiferente(bool ativo)
+    {
+        _primeiraPaginaDiferente = ativo;
+        return this;
+    }
+
+    /// <summary>Controla <c>w:evenAndOddHeaders</c>; sem chamada, ligado quando há 'even'.</summary>
+    public DocxFixtureBuilder ParesImparesDiferentes(bool ativo)
+    {
+        _paresImparesDiferentes = ativo;
+        return this;
+    }
+
     public DocxFixtureBuilder Rodape(string texto, bool comCampoPagina = false, string kind = "default")
     {
         _footers.Add((kind, footer =>
@@ -142,6 +214,19 @@ public sealed class DocxFixtureBuilder
     }
 
     public DocumentStructure Extrair()
+    {
+        using var stream = new MemoryStream(Gerar());
+        return new DocxStructureExtractor().Extract(stream, "fixture.docx");
+    }
+
+    /// <summary>Grava o .docx em disco — para testes que precisam do arquivo, não só da estrutura.</summary>
+    public string Salvar(string caminho)
+    {
+        File.WriteAllBytes(caminho, Gerar());
+        return caminho;
+    }
+
+    private byte[] Gerar()
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -181,12 +266,21 @@ public sealed class DocxFixtureBuilder
                 });
             }
 
+            var tipos = _headers.Select(h => h.Kind).Concat(_footers.Select(f => f.Kind)).ToList();
+            if (_primeiraPaginaDiferente ?? tipos.Contains("first"))
+                sectPr.AppendChild(new TitlePage());
+            if (_paresImparesDiferentes ?? tipos.Contains("even"))
+            {
+                var settings = main.AddNewPart<DocumentSettingsPart>();
+                settings.Settings = new Settings(new EvenAndOddHeaders());
+                settings.Settings.Save();
+            }
+
             body.AppendChild(sectPr);
             main.Document.Save();
         }
 
-        stream.Position = 0;
-        return new DocxStructureExtractor().Extract(stream, "fixture.docx");
+        return stream.ToArray();
     }
 
     private static HeaderFooterValues Tipo(string kind) => kind switch

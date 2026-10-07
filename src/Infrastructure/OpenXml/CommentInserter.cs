@@ -8,7 +8,7 @@ namespace WordComplianceValidator.Infrastructure.OpenXml;
 
 public sealed class CommentInserter : ICommentInserter
 {
-    public void InsertComments(
+    public int InsertComments(
         string sourcePath,
         string destinationPath,
         IReadOnlyList<Violation> violations,
@@ -29,11 +29,13 @@ public sealed class CommentInserter : ICommentInserter
             .DefaultIfEmpty(0)
             .Max() + 1;
 
-        var paragraphs = main.Document.Body?.Descendants<Paragraph>().ToList() ?? new List<Paragraph>();
-        var paragraphsById = paragraphs.ToDictionary(
-            p => p.ParagraphId?.Value ?? string.Empty,
-            p => p,
-            StringComparer.OrdinalIgnoreCase);
+        // Mesma enumeração e mesmos ids do extrator: é o que garante que o ParagraphId de uma
+        // violação aponte para o parágrafo em que ela foi encontrada.
+        var comId = main.Document?.Body is { } body
+            ? DocxStructureExtractor.ParagrafosComId(body).ToList()
+            : new List<(Paragraph Paragrafo, string Id)>();
+        var paragraphs = comId.Select(x => x.Paragrafo).ToList();
+        var paragraphsById = comId.ToDictionary(x => x.Id, x => x.Paragrafo, StringComparer.OrdinalIgnoreCase);
 
         var firstParagraph = paragraphs.FirstOrDefault();
         var primeiroPorSecao = MapearPrimeiroParagrafoPorSecao(paragraphs);
@@ -47,6 +49,7 @@ public sealed class CommentInserter : ICommentInserter
             .Select(g => (g.Key.Alvo, g.Key.Mensagem, Regras: g.Select(v => v.RuleId).Distinct().ToList()))
             .ToList();
 
+        var inseridos = 0;
         foreach (var (target, mensagem, regras) in agrupadas)
         {
             if (target is null) continue;
@@ -66,37 +69,25 @@ public sealed class CommentInserter : ICommentInserter
             var rangeEnd = new CommentRangeEnd { Id = commentId.ToString() };
             var reference = new Run(new CommentReference { Id = commentId.ToString() });
 
-            target.InsertBefore(rangeStart, target.FirstChild);
+            // O w:pPr tem de ser o primeiro filho do parágrafo; inserir o início do comentário
+            // antes dele gera XML fora do schema, que o Word pode recusar ou pedir para reparar.
+            if (target.ParagraphProperties is { } pPr) target.InsertAfter(rangeStart, pPr);
+            else target.InsertAt(rangeStart, 0);
             target.AppendChild(rangeEnd);
             target.AppendChild(reference);
 
             commentId++;
+            inseridos++;
         }
 
         commentsPart.Comments.Save();
-        EnsureUpdateFieldsOnOpen(main);
-        main.Document.Save();
-    }
-
-    /// <summary>
-    /// Marca o documento para recalcular todos os campos (TOC, PAGE, NUMPAGES, REF...)
-    /// na próxima vez que o usuário abrir o arquivo no Word. Importante porque a inserção
-    /// de comentários invalida páginas e referências.
-    /// </summary>
-    private static void EnsureUpdateFieldsOnOpen(MainDocumentPart main)
-    {
-        var settingsPart = main.DocumentSettingsPart ?? main.AddNewPart<DocumentSettingsPart>();
-        settingsPart.Settings ??= new Settings();
-        var existing = settingsPart.Settings.GetFirstChild<UpdateFieldsOnOpen>();
-        if (existing is null)
-        {
-            settingsPart.Settings.AppendChild(new UpdateFieldsOnOpen { Val = true });
-        }
-        else
-        {
-            existing.Val = true;
-        }
-        settingsPart.Settings.Save();
+        // As configurações do documento ficam como estavam. A cópia gravava w:updateFields, e o
+        // Word abria perguntando "Este documento contém campos que podem fazer referência a
+        // outros arquivos. Deseja atualizar os campos?" — um alerta que assusta quem só quer ler
+        // os comentários. Comentários ficam na margem e não mudam a paginação, então não há o
+        // que recalcular.
+        main.Document?.Save();
+        return inseridos;
     }
 
     private static Paragraph? ResolveTarget(

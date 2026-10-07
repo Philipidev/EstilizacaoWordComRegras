@@ -47,3 +47,15 @@ appsettings.local.json
 ## OS
 .DS_Store
 Thumbs.db
+
+## Resultados de teste / cobertura (dotnet test --coverlet)
+TestResults/
+
+## Pacote gerado por publicar.ps1 (pode conter a chave embutida: nunca versionar)
+/dist/
+/Revisor-*.zip
+
+## Documentos revisados gerados pelos testes e pelo modo guiado
+templates/*-REVISADO.docx
+## 328 MB: acima do limite de 100 MB por arquivo do GitHub. Fica só local.
+templates/RN-816-RL-67456-00.docx
