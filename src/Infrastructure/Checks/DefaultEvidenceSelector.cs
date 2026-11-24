@@ -261,7 +261,7 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
     }
 
     private static readonly System.Text.RegularExpressions.Regex CodigoDeRevisao =
-        new(@"^(0[A-Za-z]|\d{2}|Rev\.?|Pag\.?)$",
+        new(@"^(0[A-Za-z]|[A-Za-z]|\d{1,2}|Rev\.?|Pag\.?)$",
             System.Text.RegularExpressions.RegexOptions.Compiled
           | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 

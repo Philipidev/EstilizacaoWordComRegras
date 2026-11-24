@@ -246,7 +246,7 @@ isolado.
 | Chave | Default | Para quê |
 |---|---|---|
 | `semantico.regrasHabilitadas` | **(sem default — vazio = motor desligado)** | Lista de `Ref` separada por `\|` que o motor semântico genérico pode assumir. Aceita `*` para todas as entradas sem check dedicado. |
-| `semantico.modelo.default` | (usa `OpenAI:Model`, hoje `gpt-6.1-sol`) | Modelo padrão das regras semânticas deste cliente. |
+| `semantico.modelo.default` | (usa `OpenAI:Model`, hoje `gpt-6.2-sol`) | Modelo padrão das regras semânticas deste cliente. |
 | `semantico.modelo.<Ref>` | (usa o default) | Override de modelo por regra, ex.: `"semantico.modelo.PS-024:4.3:Cliente": "gpt-6-luna"`. |
 
 > ⚠️ **Sem `semantico.regrasHabilitadas`, nenhuma regra semântica roda** — mesmo com a chave
@@ -258,7 +258,7 @@ A allow-list é explícita de propósito: o PS-005 inteiro (fluxo Meridian, e-ma
 autoridade do aprovador) é indecidível a partir do `.docx`, e habilitá-lo gastaria tokens
 para produzir "não aplicável" em todos os itens.
 
-**Modelo.** O padrão é o `gpt-6.1-sol` com raciocínio `medium` para todas as regras,
+**Modelo.** O padrão é o `gpt-6.2-sol` com raciocínio `medium` para todas as regras,
 definido em `appsettings.json` (`OpenAI:Model`, `OpenAI:ReasoningEffort`). Com o cache de prompt
 acertando ~93% da entrada, um documento custa ~US$ 0,08 — trocar regras simples por um modelo
 menor economiza pouco. Se precisar, o override por regra continua disponível:

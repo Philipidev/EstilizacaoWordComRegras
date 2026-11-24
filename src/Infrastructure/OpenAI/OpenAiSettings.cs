@@ -2,7 +2,7 @@ namespace WordComplianceValidator.Infrastructure.OpenAI;
 
 public sealed class OpenAiSettings
 {
-    public const string ModeloPadrao = "gpt-6.1-sol";
+    public const string ModeloPadrao = "gpt-6.2-sol";
 
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = ModeloPadrao;

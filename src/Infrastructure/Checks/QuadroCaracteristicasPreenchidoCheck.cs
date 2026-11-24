@@ -25,7 +25,7 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         ["Revisão"]       = new[] { "Revisão", "Rev.", "Rev" },
         ["Data"]          = new[] { "Data", "Data de emissão", "Emissão" },
         ["Elaborado por"] = new[] { "Elaborado por", "Elaborador", "Emissor" },
-        ["Verificado por"] = new[] { "Verificado por", "Verificador", "Verificador Técnico" },
+        ["Verificado por"] = new[] { "Verificado por", "Verificador", "Verificador Técnico", "V. Técnico" },
         ["Aprovado por"]  = new[] { "Aprovado por", "Aprovador" },
     };
 
@@ -81,9 +81,22 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         var (numeracao, notaNumeracao) = NumeracaoDaPaginaDoQuadro(ctx, table);
         if (numeracao is not null) violations.Add(numeracao);
 
+        var notaModelo = NotaDoModelo(table);
+        var nota = notaNumeracao is null ? notaModelo : $"{notaModelo} {notaNumeracao}";
+
         var status = violations.Count == 0 ? CheckStatus.Passed : CheckStatus.Failed;
-        return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: notaNumeracao));
+        return Task.FromResult(new RuleCheckResult(Ref, status, violations, Note: nota));
     }
+
+    /// <summary>
+    /// Diz qual modelo de quadro foi lido. O FR-115-01 vem em duas tabelas (título/codificação
+    /// e histórico/grade), que <see cref="QuadroCaracteristicas.Find"/> junta; o antigo é uma
+    /// tabela só. <see cref="ExtractedTable.Partes"/> só tem mais de um índice quando houve junção.
+    /// </summary>
+    internal static string NotaDoModelo(ExtractedTable quadro) =>
+        quadro.Partes.Count > 1
+            ? "Modelo do quadro: novo (FR-115-01, em duas tabelas)."
+            : "Modelo do quadro: antigo (tabela única).";
 
     /// <summary>
     /// Segunda exigência do item 4.7: a página do quadro não pode ser numerada. É decidível
@@ -96,7 +109,7 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         DocumentContext ctx, ExtractedTable table)
     {
         var secao = ctx.Structure.Paragraphs
-            .Where(p => p.TableIndex == table.Index)
+            .Where(p => table.Contem(p.TableIndex))
             .Select(p => (int?)p.SectionIndex)
             .FirstOrDefault();
 
@@ -111,7 +124,7 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         if (secaoInfo is not null && (secaoInfo.DisplayedHeaderFooters.Count > 0 || secaoInfo.FirstPageHeaderFooters.Count > 0))
         {
             var primeiroDaSecao = ctx.Structure.Paragraphs.FirstOrDefault(p => p.SectionIndex == secao);
-            var quadroAbreASecao = primeiroDaSecao?.TableIndex == table.Index;
+            var quadroAbreASecao = table.Contem(primeiroDaSecao?.TableIndex);
             partes = secaoInfo.TitlePage && quadroAbreASecao
                 ? secaoInfo.FirstPageHeaderFooters
                 : secaoInfo.DisplayedHeaderFooters;
@@ -165,7 +178,7 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         QuadroCaracteristicas.EntradaDeRevisao? vigente)
     {
         if (vigente?.Coluna(aliases) is { } doHistorico)
-            return !string.IsNullOrWhiteSpace(doHistorico);
+            return !string.IsNullOrWhiteSpace(doHistorico) && !EhTextoGuia(doHistorico);
 
         var celulasTexto = table.Cells.Select(c => c.Text).ToList();
         if (DocumentoTexto.Normalizar(campo).StartsWith("codific", StringComparison.Ordinal)
@@ -182,7 +195,9 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
                 || (norm.Length <= a.Length + 30
                     && System.Text.RegularExpressions.Regex.IsMatch(norm, $@"\b{System.Text.RegularExpressions.Regex.Escape(a)}\b")));
         }
-        bool TemValor(ExtractedTableCell c) => !string.IsNullOrWhiteSpace(c.Text) || c.ImageCount > 0;
+        // "Preencher" é o texto-guia do formulário FR-115-01, não um valor.
+        bool TemValor(ExtractedTableCell c) =>
+            (!string.IsNullOrWhiteSpace(c.Text) && !EhTextoGuia(c.Text)) || c.ImageCount > 0;
 
         var linhas = table.Cells.GroupBy(c => c.Row).OrderBy(g => g.Key)
             .Select(g => g.OrderBy(c => c.Column).ToList())
@@ -199,7 +214,7 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
                 {
                     var rotulo = DocumentoTexto.Normalizar(celula.Text[..doisPontos]);
                     if (aliasesNorm.Any(a => rotulo == a || rotulo.StartsWith(a + " ", StringComparison.Ordinal))
-                        && celula.Text[(doisPontos + 1)..].Trim().Length > 0)
+                        && celula.Text[(doisPontos + 1)..].Trim() is { Length: > 0 } valor && !EhTextoGuia(valor))
                         return true;
                 }
 
@@ -224,6 +239,9 @@ public sealed class QuadroCaracteristicasPreenchidoCheck : IRuleCheck
         }
         return false;
     }
+
+    private static bool EhTextoGuia(string texto) =>
+        DocumentoTexto.Normalizar(texto) is "preencher" or "preencher aqui";
 
     private static IReadOnlyList<string> AliasesFor(DocumentContext ctx, string campo)
     {

@@ -103,7 +103,7 @@ TODO_REGRAS.md          ← rastreamento por regra (status, implementação, heu
   checks determinísticos e avisa `[info] LLM desabilitado`.
   **Nunca** coloque a chave em `src/Cli/appsettings.json` — esse arquivo é rastreado e vai
   dentro do pacote publicado pelo `publicar.ps1`.
-- `OpenAI:Model` (padrão `gpt-6.1-sol`), `OpenAI:ReasoningEffort` (padrão `medium`) e
+- `OpenAI:Model` (padrão `gpt-6.2-sol`), `OpenAI:ReasoningEffort` (padrão `medium`) e
   `OpenAI:Precos` (tarifa por modelo, usada para estimar o custo) ficam em `appsettings.json`.
 
 ---
@@ -267,7 +267,7 @@ Todos os valores aceitam múltiplos aliases separados por `|`.
 | `numeracao.exigirDireita` | `true` para exigir numeração alinhada à direita no cabeçalho | `false` |
 | `painelNavegacao.comprimentoMaximoTitulo` | Acima disso um "título" é tratado como corpo mal marcado | `200` |
 | `semantico.regrasHabilitadas` | Refs que o motor semântico pode assumir (`\|`-separado, ou `*`) | (vazio = motor desligado) |
-| `semantico.modelo.default` | Modelo das regras semânticas deste cliente | `OpenAI:Model` (`gpt-6.1-sol`) |
+| `semantico.modelo.default` | Modelo das regras semânticas deste cliente | `OpenAI:Model` (`gpt-6.2-sol`) |
 | `semantico.modelo.<Ref>` | Override de modelo por regra (ex.: `gpt-6-luna`) | usa o default |
 
 Os regexes de codificação descrevem o código **sem** sufixo de revisão; a busca aceita sozinha
@@ -308,13 +308,13 @@ tabela oficial de iniciais do PL-011.
 | `IniciaisDistintasCheck` × 2 | `PS-002:4.3.3 (c):Cliente/Pda` | Elaborador ∩ verificador = ∅ na revisão vigente do histórico |
 | `ConsistenciaIniciaisCheck` × 2 | `PS-002:4.3.3 (d):Cliente/Pda` | Iniciais da revisão vigente constam na folha de rosto |
 | `QuadroCaracteristicasPreenchidoCheck` (item `4.3.3 (letra e)`) | `PS-002:4.3.3 (e):Cliente` | Campos obrigatórios preenchidos (revisão vigente, "Rótulo: valor", formulário) |
-| `PaginacaoAtualizadaCheck` × 2 (item `4.3.3 (letra f)`) | `PS-002:4.3.3 (f):Cliente/Pda` | Paginação atualizada |
+| `PaginacaoAtualizadaCheck` × 2 (item `4.3.3 (letra f)`) | `PS-002:4.3.3 (f):Cliente/Pda` | Paginação presente; total digitado (sem `NUMPAGES`) é aceito se conferir com as páginas do Word (`docProps/app.xml`) menos as do quadro "Características", e com a grade de páginas do quadro |
 | `CabecalhosPadronizadosCheck` × 2 | `PS-002:4.3.3 (g):Cliente/Pda` | Cabeçalhos exibidos uniformes entre seções |
 | `ReferenciasCruzadasCheck` × 2 | `PS-002:4.3.3 (h):Cliente/Pda` | Marcas "Erro! …" (PT/EN) e REF/PAGEREF/NOTEREF para indicador inexistente |
 | `CoerenciaRevisoesCheck` × 2 | `PS-002:4.3.3 (i):Cliente/Pda` | Sufixo das codificações × revisão vigente; emissões ao Cliente × revisões PdA por data |
 | `IndiceAtualizadoCheck` | `PS-002:4.3.5.1:Cliente` | TOC presente e sem marcas de erro |
 | `PaginacaoAtualizadaCheck` (item `4.3.6.6`) | `PS-002:4.3.6.6:Cliente` | Numeração das páginas (padrão Cliente) |
-| `QuadroCaracteristicasPreenchidoCheck` (item `4.7`) | `PS-002:4.7:Cliente` | Quadro Características completo |
+| `QuadroCaracteristicasPreenchidoCheck` (item `4.7`) | `PS-002:4.7:Cliente` | Quadro Características completo (modelo antigo, em uma tabela, e FR-115-01, em duas tabelas consecutivas — `templates/FR-115-01 - Quadro Características_Word.docx`) |
 
 #### Regras que o CL-001 marcava `IA=Não` e passaram a ser automatizadas
 
@@ -350,7 +350,7 @@ que `CatalogCoverageTests` audita.
 
 ## Uso de LLM (semantic checker)
 
-Modelo: **`gpt-6.1-sol`** com `reasoning_effort` **medium**, para todas as regras
+Modelo: **`gpt-6.2-sol`** com `reasoning_effort` **medium**, para todas as regras
 (`OpenAI:Model` e `OpenAI:ReasoningEffort`). O profile ainda aceita `semantico.modelo.<Ref>`
 para trocar o modelo de uma regra específica, mas o `exemplo.json` não usa.
 

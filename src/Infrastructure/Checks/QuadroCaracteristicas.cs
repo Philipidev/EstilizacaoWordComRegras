@@ -70,7 +70,7 @@ public static class QuadroCaracteristicas
             .Select(p => p.TableIndex)
             .OfType<int>()
             .Distinct()
-            .Where(i => quadro is null || i != quadro.Index);
+            .Where(i => quadro is null || !quadro.Contem(i));
 
         foreach (var indice in tabelas)
         {
@@ -110,6 +110,23 @@ public static class QuadroCaracteristicas
             var colData = ColunaCom(cabecalho, "data");
             if (colRev is null || colData is null) continue;
 
+            // Cabeçalho em duas linhas (FR-115-01): "Histórico de Revisões | Data da Emissão |
+            // Iniciais | Descrição" e, embaixo, "Elaborador | V. Técnico | Aprovador" com as
+            // demais células mescladas na vertical (vazias). As linhas de dados seguem a
+            // estrutura da linha de baixo, então ela vira o cabeçalho, com os nomes de cima.
+            var primeiraDeDados = i + 1;
+            if (!linhas[i + 1].Any(c => c.Column == colRev && TokenRevisao.IsMatch(c.Text.Trim()))
+                && i + 2 < linhas.Count
+                && Compor(cabecalho, linhas[i + 1]) is var composto
+                && ColunaCom(composto, "rev") is { } revComposto
+                && ColunaCom(composto, "data") is { } dataComposto)
+            {
+                cabecalho = composto;
+                colRev = revComposto;
+                colData = dataComposto;
+                primeiraDeDados = i + 2;
+            }
+
             var colDescricao = ColunaCom(cabecalho, "descri");
             var nomes = cabecalho
                 .Where(c => DocumentoTexto.Normalizar(c.Text).Length > 0)
@@ -117,7 +134,7 @@ public static class QuadroCaracteristicas
                 .ToDictionary(g => g.Key, g => DocumentoTexto.Normalizar(g.First().Text));
             var entradas = new List<EntradaDeRevisao>();
 
-            for (var r = i + 1; r < linhas.Count; r++)
+            for (var r = primeiraDeDados; r < linhas.Count; r++)
             {
                 var celulas = linhas[r].GroupBy(c => c.Column).ToDictionary(g => g.Key, g => g.First().Text.Trim());
                 if (!celulas.TryGetValue(colRev.Value, out var rev) || !TokenRevisao.IsMatch(rev)) break;
@@ -138,6 +155,20 @@ public static class QuadroCaracteristicas
 
         return Array.Empty<EntradaDeRevisao>();
     }
+
+    /// <summary>
+    /// Cabeçalho de duas linhas lido pela linha de baixo: cada célula vazia (continuação de
+    /// mesclagem vertical) recebe o texto da célula de cima que cobre a mesma coluna da grade.
+    /// </summary>
+    private static List<ExtractedTableCell> Compor(
+        IReadOnlyList<ExtractedTableCell> superior, IReadOnlyList<ExtractedTableCell> inferior) =>
+        inferior.Select(c =>
+        {
+            if (c.Text.Trim().Length > 0) return c;
+            var acima = superior.FirstOrDefault(s =>
+                c.GridColumn >= s.GridColumn && c.GridColumn < s.GridColumn + s.GridSpan);
+            return acima is null ? c : c with { Text = acima.Text };
+        }).ToList();
 
     /// <summary>Revisão vigente: a última entrada do histórico.</summary>
     public static string? RevisaoVigente(ExtractedTable quadro) =>
@@ -165,7 +196,11 @@ public static class QuadroCaracteristicas
     {
         if (celulas.Count < 4) return false;
 
-        var preenchidas = celulas.Select(c => c.Text.Trim()).Where(t => t.Length > 0).ToList();
+        // O modelo FR-115-01 abre cada grupo com o rótulo vertical "PÁGINAS" (uma letra por
+        // linha na célula mesclada). Ele não é folha nem marcação e fica de fora.
+        var preenchidas = celulas.Select(c => c.Text.Trim())
+            .Where(t => t.Length > 0 && !EhRotuloDeFolhas(t))
+            .ToList();
         if (preenchidas.Count == 0) return false;
 
         return preenchidas.All(t => int.TryParse(t, out _)
@@ -241,10 +276,13 @@ public static class QuadroCaracteristicas
             .ToList();
         if (aliases.Count == 0) return null;
 
-        return Melhor(doc.Tables.Select(t => (Tabela: t, Titulo: DocumentoTexto.Normalizar(t.FirstRowText))))
+        // Cada candidata já vem completada com a continuação (modelo FR-115-01, em duas
+        // tabelas): sem isso a tabela do título, que não tem histórico, perderia para qualquer
+        // outra e, vencendo, deixaria revisão, datas e iniciais "ausentes".
+        return Melhor(doc.Tables.Select(t => (Tabela: Completar(doc, t), Titulo: DocumentoTexto.Normalizar(t.FirstRowText))))
             // Documentos que põem o título fora da primeira linha: só depois que as tabelas
             // tituladas tiveram a chance de casar.
-            ?? Melhor(doc.Tables.Select(t => (Tabela: t,
+            ?? Melhor(doc.Tables.Select(t => (Tabela: Completar(doc, t),
                    Titulo: DocumentoTexto.Normalizar(string.Join(" ", t.Cells.Select(c => c.Text))))));
 
         ExtractedTable? Melhor(IEnumerable<(ExtractedTable Tabela, string Titulo)> candidatas) =>
@@ -260,6 +298,123 @@ public static class QuadroCaracteristicas
                 .ThenByDescending(c => c.Tabela.Index)
                 .Select(c => c.Tabela)
                 .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Rótulo de grupo da grade de folhas ("PÁGINAS", "FOLHAS"), inclusive escrito na
+    /// vertical — "P/Á/G/I/N/A/S", uma letra por parágrafo.
+    /// </summary>
+    internal static bool EhRotuloDeFolhas(string texto)
+    {
+        var letras = new string(DocumentoTexto.Normalizar(texto).Where(char.IsLetter).ToArray());
+        return letras is "paginas" or "pagina" or "pags" or "pag" or "folhas" or "folha" or "fls" or "fl";
+    }
+
+    /// <summary>
+    /// Junta ao quadro as tabelas que o continuam.
+    /// <para>
+    /// O modelo antigo é uma tabela só. O FR-115-01 separa o quadro em duas tabelas
+    /// consecutivas: a primeira com o título "QUADRO CARACTERÍSTICAS DO DOCUMENTO", o título e
+    /// as codificações; a segunda com a relação de apêndices e anexos, a grade de páginas
+    /// alteradas e o histórico de revisões. Lida sozinha, a primeira não tem revisão, datas
+    /// nem iniciais. A continuação só é aceita quando traz o histórico de revisões (é ele que
+    /// identifica o quadro) e quando nada além de parágrafos vazios ou curtos — nenhum título
+    /// de seção — separa as tabelas.
+    /// </para>
+    /// </summary>
+    internal static ExtractedTable Completar(DocumentStructure doc, ExtractedTable tabela)
+    {
+        // Só a tabela do título do FR-115-01 é completada: a que já traz cabeçalho de histórico
+        // (modelo antigo, mesmo com histórico vazio) é o quadro inteiro, e juntá-la colaria
+        // nela a tabela que viesse depois — a folha índice do Cliente, por exemplo.
+        if (TemCabecalhoDeHistorico(tabela)) return tabela;
+
+        var partes = new List<ExtractedTable> { tabela };
+        var aninhadas = new List<int>();
+        var tentativas = 0;
+        foreach (var seguinte in doc.Tables.Where(t => t.Index > tabela.Index).OrderBy(t => t.Index))
+        {
+            var posicao = Posicao(doc, partes[^1].Index, seguinte.Index);
+            // Tabela dentro da anterior (logo numa célula, por exemplo): é parte do quadro, mas
+            // seu texto já está na célula que a contém.
+            if (posicao == PosicaoDaSeguinte.Dentro) { aninhadas.Add(seguinte.Index); continue; }
+            if (posicao != PosicaoDaSeguinte.Adjacente || ++tentativas > 2) return tabela;
+
+            partes.Add(seguinte);
+            // A continuação se reconhece pela estrutura — cabeçalho do histórico ou grade de
+            // páginas — e não por ter revisões preenchidas: o formulário em branco e o rascunho
+            // também precisam ser lidos como um quadro só.
+            if (TemCabecalhoDeHistorico(seguinte) || TemGradeDeFolhas(seguinte))
+                return Juntar(partes, aninhadas);
+        }
+        return tabela;
+    }
+
+    /// <summary>Alguma linha tem ao mesmo tempo coluna de revisão e de data.</summary>
+    private static bool TemCabecalhoDeHistorico(ExtractedTable tabela) =>
+        Linhas(tabela).Any(l => ColunaCom(l, "rev") is not null && ColunaCom(l, "data") is not null);
+
+    private static bool TemGradeDeFolhas(ExtractedTable tabela) =>
+        Linhas(tabela).Any(EhLinhaDeGradeDeFolhas);
+
+    private static IEnumerable<List<ExtractedTableCell>> Linhas(ExtractedTable tabela) =>
+        tabela.Cells.GroupBy(c => c.Row).OrderBy(g => g.Key).Select(g => g.OrderBy(c => c.Column).ToList());
+
+    private static ExtractedTable Juntar(IReadOnlyList<ExtractedTable> partes, IReadOnlyList<int> aninhadas)
+    {
+        var celulas = new List<ExtractedTableCell>();
+        var deslocamento = 0;
+        foreach (var parte in partes)
+        {
+            celulas.AddRange(parte.Cells.Select(c => c with { Row = c.Row + deslocamento }));
+            if (parte.Cells.Count > 0) deslocamento += parte.Cells.Max(c => c.Row) + 1;
+        }
+        return new ExtractedTable(partes[0].Index, celulas, partes[0].FirstRowText)
+        {
+            Partes = partes.Select(p => p.Index).Concat(aninhadas).ToList()
+        };
+    }
+
+    /// <summary>
+    /// Nada relevante entre as tabelas <paramref name="anterior"/> e <paramref name="seguinte"/>:
+    /// sem título de seção e com no máximo 200 caracteres de texto solto (o modelo deixa um
+    /// parágrafo vazio entre elas). Estrutura sem parágrafos (montada à mão nos testes): adjacentes.
+    /// </summary>
+    private enum PosicaoDaSeguinte { Adjacente, Dentro, Separada }
+
+    private static PosicaoDaSeguinte Posicao(DocumentStructure doc, int anterior, int seguinte)
+    {
+        var paragrafos = doc.Paragraphs;
+        var fim = -1;
+        var inicio = -1;
+        for (var i = 0; i < paragrafos.Count; i++)
+        {
+            if (paragrafos[i].TableIndex == anterior) fim = i;
+            if (paragrafos[i].TableIndex == seguinte && inicio < 0) inicio = i;
+        }
+        if (fim < 0 && inicio < 0) return PosicaoDaSeguinte.Adjacente;
+        if (fim < 0 || inicio < 0) return PosicaoDaSeguinte.Separada;
+        if (inicio < fim) return PosicaoDaSeguinte.Dentro;
+
+        var entre = paragrafos.Skip(fim + 1).Take(inicio - fim - 1).Where(p => p.TableIndex is null).ToList();
+        return entre.All(p => p.OutlineLevel is null) && entre.Sum(p => p.Text.Trim().Length) <= 200
+            ? PosicaoDaSeguinte.Adjacente
+            : PosicaoDaSeguinte.Separada;
+    }
+
+    /// <summary>
+    /// Páginas que o quadro ocupou na última paginação do Word: uma, mais cada
+    /// <c>w:lastRenderedPageBreak</c> dentro das tabelas do quadro (fora a quebra que abre o
+    /// quadro numa página nova). Nulo quando o quadro não tem parágrafos mapeados.
+    /// </summary>
+    public static int? PaginasDoQuadro(DocumentStructure doc, ExtractedTable quadro)
+    {
+        var paragrafos = doc.Paragraphs.Where(p => quadro.Contem(p.TableIndex)).ToList();
+        if (paragrafos.Count == 0) return null;
+
+        var quebras = paragrafos.Sum(p => p.RenderedPageBreaks);
+        if (paragrafos[0].RenderedPageBreakAtStart && quebras > 0) quebras--;
+        return quebras + 1;
     }
 
     public static IReadOnlyDictionary<string, string> FieldsByLabel(ExtractedTable table)

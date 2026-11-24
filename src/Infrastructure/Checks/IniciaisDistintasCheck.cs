@@ -24,7 +24,7 @@ public sealed class IniciaisDistintasCheck : IRuleCheck
             ?? "Características do Documento|Quadro de Características|Características")
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var elabAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloElaborador") ?? "Elaborado por|Emissor|Elaborador");
-        var verifAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloVerificador") ?? "Verificado por|Verificador|Verificador Técnico");
+        var verifAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloVerificador") ?? "Verificado por|Verificador|Verificador Técnico|V. Técnico");
 
         var table = QuadroCaracteristicas.Find(ctx.Structure, titulosAlias);
         if (table is null)

@@ -91,6 +91,13 @@ public sealed record ExtractedParagraph(
     /// que o OOXML guarda.
     /// </summary>
     public bool RenderedPageBreakAtStart { get; init; }
+
+    /// <summary>
+    /// Quantos <c>w:lastRenderedPageBreak</c> o parágrafo tem, em qualquer posição. Cada um é
+    /// um início de página na última paginação do Word; somados sobre uma tabela, dizem
+    /// quantas páginas ela ocupa.
+    /// </summary>
+    public int RenderedPageBreaks { get; init; }
 }
 
 public sealed record ExtractedTableCell(
@@ -100,12 +107,38 @@ public sealed record ExtractedTableCell(
     // Imagens dentro da célula (Drawing + VML). Campos de formulário preenchidos por logo ou
     // assinatura digitalizada têm texto vazio mas não estão em branco — sem esta contagem,
     // "célula sem texto" e "campo não preenchido" viram a mesma coisa.
-    int ImageCount = 0);
+    int ImageCount = 0)
+{
+    /// <summary>
+    /// Coluna da grade da tabela (<c>w:tblGrid</c>) em que a célula começa. Difere de
+    /// <see cref="Column"/>, que é a posição física na linha, quando há células mescladas na
+    /// horizontal (<c>w:gridSpan</c>) — caso do cabeçalho do histórico do FR-115-01, em que
+    /// "Iniciais" cobre as colunas de elaborador, verificador e aprovador.
+    /// </summary>
+    public int GridColumn { get; init; } = Column;
+
+    // Atenção: o default acima é fixado na construção; um "with { Column = n }" não o recalcula.
+
+    /// <summary>Quantas colunas da grade a célula ocupa (<c>w:gridSpan</c>).</summary>
+    public int GridSpan { get; init; } = 1;
+}
 
 public sealed record ExtractedTable(
     int Index,
     IReadOnlyList<ExtractedTableCell> Cells,
-    string? FirstRowText);
+    string? FirstRowText)
+{
+    /// <summary>
+    /// Índices (em <see cref="DocumentStructure.Tables"/>) das tabelas que formam esta. Uma
+    /// tabela comum tem só o próprio <see cref="Index"/>; o quadro "Características" do modelo
+    /// FR-115-01 vem em duas tabelas consecutivas (título/codificação e apêndices/grade/
+    /// histórico) que são lidas como uma só.
+    /// </summary>
+    public IReadOnlyList<int> Partes { get; init; } = new[] { Index };
+
+    /// <summary>O parágrafo da tabela <paramref name="tableIndex"/> pertence a esta?</summary>
+    public bool Contem(int? tableIndex) => tableIndex is { } i && Partes.Contains(i);
+}
 
 /// <summary>
 /// Referência cruzada que aponta para um indicador inexistente. O Word só mostra
@@ -132,7 +165,15 @@ public sealed record ExtractedDocumentProperties(
     string? LastModifiedBy,
     string? Revision,
     DateTime? Created,
-    DateTime? Modified);
+    DateTime? Modified)
+{
+    /// <summary>
+    /// Total de páginas que o Word gravou em <c>docProps/app.xml</c> no último salvamento.
+    /// Inclui todas as páginas (capa e quadro "Características" também). Nulo quando o pacote
+    /// não traz a propriedade — documentos gerados por ferramenta que não pagina.
+    /// </summary>
+    public int? Pages { get; init; }
+}
 
 public sealed record DocumentStructure(
     string? FileName,

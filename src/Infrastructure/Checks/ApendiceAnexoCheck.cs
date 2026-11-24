@@ -38,7 +38,7 @@ public sealed class ApendiceAnexoCheck : IRuleCheck
         // As linhas do próprio quadro não contam como apêndice/anexo do documento: lidas como
         // títulos, elas se referenciavam a si mesmas e qualquer anexo listado "existia".
         var titulos = ctx.Structure.Paragraphs
-            .Where(p => quadro is null || p.TableIndex != quadro.Index)
+            .Where(p => quadro is null || !quadro.Contem(p.TableIndex))
             .Where(p => !string.IsNullOrWhiteSpace(p.Text) && TituloApendiceAnexo.IsMatch(p.Text))
             .GroupBy(p => Rotulo(p.Text))
             .Select(g => (Rotulo: g.Key, Paragrafo: g.First()))

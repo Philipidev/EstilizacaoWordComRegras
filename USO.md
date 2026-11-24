@@ -119,8 +119,9 @@ Saída       revisado.docx
 ✓ nenhuma não conformidade  ·  ! 7 aviso(s)  ·  ✓ 23 conformes  ·  – 63 não aplicáveis
 
 – PS-002:4.3.3 (letra f):Pda
-    • O total de páginas no cabeçalho está gravado como texto fixo ("34") em vez
-      de campo NUMPAGES: ele não é atualizado ao repaginar o documento.
+    • O total de páginas indicado no cabeçalho (34) não confere: o Word registrou
+      37 página(s) no último salvamento, das quais 2 do quadro 'Características do
+      Documento', o que dá 35 página(s) numerada(s).
 …
 
 7 comentário(s) inserido(s)

@@ -39,7 +39,7 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
         var elabAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloElaborador")
             ?? "Elaborado por|Emissor|Elaborador");
         var verifAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloVerificador")
-            ?? "Verificado por|Verificador|Verificador Técnico");
+            ?? "Verificado por|Verificador|Verificador Técnico|V. Técnico");
         var aprovAliases = SplitAliases(ctx.Profile.Get("iniciais.rotuloAprovador")
             ?? "Aprovado por|Aprovador");
 

@@ -15,7 +15,7 @@ public class RealDocumentCheckTests
             ["logomarcas.minimo"] = "2",
             ["quadroCaracteristicas.aliases"] = "Características do Documento|Características Técnicas|Quadro de Características|Características",
             ["iniciais.rotuloElaborador"] = "Elaborado por|Emissor|Elaborador",
-            ["iniciais.rotuloVerificador"] = "Verificado por|Verificador|Verificador Técnico",
+            ["iniciais.rotuloVerificador"] = "Verificado por|Verificador|Verificador Técnico|V. Técnico",
             // Codificação PdA: 15 caracteres (PS-018 4.4), ex.: RN-816-RL-67456; com o sufixo de
             // revisão, 18 (RN-816-RL-67456-00). O "QD5-PDA-26-04-095-RT" é a codificação do
             // Cliente (MRN) — o regex antigo, rotulado PdA, casava justamente ela.
@@ -27,6 +27,8 @@ public class RealDocumentCheckTests
     [Theory]
     [InlineData("RN799RL6496600.docx")]
     [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-664-RL-60947-02.docx")]   // quadro no modelo antigo (uma tabela)
+    [InlineData("RN-778-ET-67440-00.docx")]   // quadro no modelo novo FR-115-01 (duas tabelas)
     public async Task Implemented_checks_pass_for_reference_document(string fileName)
     {
         var ctx = ReferenceDocumentContext(fileName);
@@ -95,8 +97,60 @@ public class RealDocumentCheckTests
     /// </summary>
     private static readonly HashSet<(string Arquivo, string Regra)> DefeitosConhecidos =
     [
-        ("RN-816-RL-67456-00.docx", "PS-002:4.3.3 (letra h):Cliente")
+        ("RN-816-RL-67456-00.docx", "PS-002:4.3.3 (letra h):Cliente"),
+        // RN-664: uma referência cruzada mostra "Erro! Fonte de referência não encontrada" e
+        // 15 legendas (Figura 27, Tabelas 5 e 6…) não constam do índice.
+        ("RN-664-RL-60947-02.docx", "PS-002:4.3.3 (letra h):Cliente"),
+        ("RN-664-RL-60947-02.docx", "PS-002:4.3.4.4:Pda"),
+        // RN-664: o texto do cabeçalho não é igual em todas as seções (aviso).
+        ("RN-664-RL-60947-02.docx", "PS-002:4.3.3 (letra g):Cliente"),
+        // RN-778: o corpo chama o anexo de "ANEXO I", o quadro o lista como "ADENDO I"; e 8
+        // legendas não constam do índice.
+        ("RN-778-ET-67440-00.docx", "PS-002:4.3.8:Cliente"),
+        ("RN-778-ET-67440-00.docx", "PS-002:4.3.4.4:Pda")
     ];
+
+    /// <summary>
+    /// O total de páginas dos dois documentos é digitado ("FL.: x/144", "FL.: x/107") e está
+    /// certo: o Word registrou 146 e 109 páginas, duas delas do quadro "Características", que
+    /// não entra na contagem. Antes, todo total digitado gerava aviso de "texto fixo".
+    /// </summary>
+    [Theory]
+    [InlineData("RN-778-ET-67440-00.docx", 144, 146)]
+    [InlineData("RN-664-RL-60947-02.docx", 107, 109)]
+    public async Task Total_de_paginas_digitado_confere_sem_o_quadro(string arquivo, int total, int paginasDoWord)
+    {
+        var ctx = ReferenceDocumentContext(arquivo);
+
+        var resultado = await new PaginacaoAtualizadaCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra f)")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
+
+        ctx.Structure.Properties!.Pages.Should().Be(paginasDoWord);
+        resultado.Violations.Should().BeEmpty();
+        resultado.Note.Should().Contain($"Total fixo {total} confere").And.Contain("2 do quadro");
+    }
+
+    /// <summary>
+    /// RN-778 usa o modelo FR-115-01: o quadro são duas tabelas (título/codificações e
+    /// apêndices/grade/histórico), a grade tem o rótulo vertical "PÁGINAS" e o cabeçalho do
+    /// histórico ocupa duas linhas mescladas. Lido como uma tabela só, revisão, datas e iniciais
+    /// saíam "ausentes".
+    /// </summary>
+    [Fact]
+    public void Quadro_do_modelo_novo_e_lido_inteiro()
+    {
+        var ctx = ReferenceDocumentContext("RN-778-ET-67440-00.docx");
+
+        var quadro = QuadroCaracteristicas.Find(ctx.Structure,
+            ["Características do Documento", "Quadro de Características", "Características"]);
+
+        quadro.Should().NotBeNull();
+        quadro!.Partes.Should().HaveCount(2);
+        QuadroCaracteristicas.HistoricoDeRevisoes(quadro).Select(e => e.Revisao).Should().Equal("0A", "00");
+        QuadroCaracteristicas.MaiorFolhaMarcadaNaGrade(quadro).Should().Be(144);
+        QuadroCaracteristicas.PaginasDoQuadro(ctx.Structure, quadro).Should().Be(2);
+    }
 
     /// <summary>
     /// O RN-816 tem quatro campos REF vazios — sem resultado, logo depois de referências

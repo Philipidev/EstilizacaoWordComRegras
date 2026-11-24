@@ -733,7 +733,8 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
                 FieldCodes: ExtractFieldCodes(p))
             {
                 PageBreakAfterText = quebras.DepoisDoTexto,
-                RenderedPageBreakAtStart = quebras.RenderizadaNoInicio
+                RenderedPageBreakAtStart = quebras.RenderizadaNoInicio,
+                RenderedPageBreaks = Exibidos(p, entrarEmCaixaDeTexto: false).OfType<LastRenderedPageBreak>().Count()
             });
 
             // Um sectPr dentro do pPr encerra a seção — o próximo parágrafo já é da seguinte.
@@ -853,7 +854,12 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             LastModifiedBy: p.LastModifiedBy,
             Revision: p.Revision,
             Created: p.Created,
-            Modified: p.Modified);
+            Modified: p.Modified)
+        {
+            Pages = int.TryParse(doc.ExtendedFilePropertiesPart?.Properties?.Pages?.Text, out var paginas) && paginas > 0
+                ? paginas
+                : null
+        };
     }
 
     private static IReadOnlyList<ExtractedTable> ExtractTables(MainDocumentPart main)
@@ -870,14 +876,21 @@ public sealed class DocxStructureExtractor : IDocxStructureExtractor
             foreach (var row in t.Elements<TableRow>())
             {
                 int colIdx = 0;
+                var gridCol = row.TableRowProperties?.GetFirstChild<GridBefore>()?.Val?.Value ?? 0;
                 var rowTexts = new List<string>();
                 foreach (var cell in row.Elements<TableCell>())
                 {
                     var text = TextoComSeparadores(cell).Trim();
                     var cellImages = ContarImagens(cell);
-                    cells.Add(new ExtractedTableCell(rowIdx, colIdx, text, cellImages));
+                    var span = Math.Max(1, cell.TableCellProperties?.GridSpan?.Val?.Value ?? 1);
+                    cells.Add(new ExtractedTableCell(rowIdx, colIdx, text, cellImages)
+                    {
+                        GridColumn = gridCol,
+                        GridSpan = span
+                    });
                     rowTexts.Add(text);
                     colIdx++;
+                    gridCol += span;
                 }
                 if (rowIdx == 0) firstRowText = string.Join(" | ", rowTexts);
                 rowIdx++;

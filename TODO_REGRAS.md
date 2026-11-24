@@ -203,7 +203,7 @@ Revisão de outubro/2026 (detalhes nos comentários de cada classe):
 
 ## LLM (semantic checker) — uso atual
 
-Modelo **`gpt-6.1-sol`** com raciocínio **medium** em todas as regras (`appsettings.json`:
+Modelo **`gpt-6.2-sol`** com raciocínio **medium** em todas as regras (`appsettings.json`:
 `OpenAI:Model`, `OpenAI:ReasoningEffort`). O override por regra (`semantico.modelo.<Ref>`)
 continua disponível, mas com ~93% da entrada vindo do cache o ganho de trocar de modelo é
 pequeno. O CLI imprime tokens e custo estimado ao fim de cada revisão.
@@ -242,7 +242,10 @@ do CL-001 ("quando aplicável", "no caso de DCE…") virariam falso positivo em 
   estilo de heading; identifica títulos órfãos com precisão real (Failed se
   detectado).
 - ✅ `PS-002:4.3.3 (letra f)` e `4.3.6.6` — usa campos OOXML `PAGE`/`NUMPAGES`
-  como sinal principal; texto extraído é só fallback.
+  como sinal principal; texto extraído é só fallback. A contagem automática não é
+  obrigatória: total digitado ("FL.: {PAGE}/144") é conferido contra o total do Word
+  (`docProps/app.xml`) menos as páginas do quadro "Características" (quebras de página
+  renderizadas dentro dele) e contra a maior página marcada na grade do quadro.
 - ✅ `PS-002:4.3.5.1` — detecta campo OOXML `TOC` no body + heurística antiga
   (SDT/style `toc`); pega marcas de erro do Word como Error.
 
