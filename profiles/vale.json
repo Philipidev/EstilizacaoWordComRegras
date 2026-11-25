@@ -19,6 +19,7 @@
     "folhaRosto.contratante": "",
     "folhaRosto.titulo": "",
     "folhaRosto.cabecalhoFazParteDaCapa": "true",
+    "indice.exigirElementosGraficos": "false",
 
     "corpo.fonte": "Arial",
     "corpo.tamanho": "12",
@@ -34,6 +35,10 @@
     "tarja.exigeNaoValidoExecucao": "false",
 
     "painelNavegacao.comprimentoMaximoTitulo": "200",
+
+    "semantico.contexto": "Cliente Vale. A capa é a folha de revisões da Vale (Rev. A, B, 0, 1... com TE, Por, Ver., Apr., Aut., Data); título, Nº VALE e Nº da contratada ficam no cabeçalho exibido na capa. O sumário do modelo da Vale traz só os títulos, sem relação de figuras e tabelas.",
+    "semantico.contexto.PS-018:4.4:Pda": "As contagens de 15/18 caracteres valem só para a codificação da PdA (ex.: RD-771-RL-67131 sem sufixo, RD-771-RL-67131-00 com sufixo). Documentos da Vale têm codificação própria no padrão RL-1850PI-X-54747 (17 caracteres sem revisão); normas e procedimentos citados (PNR-000100, NOR-0003, RISR etc.) também têm codificação própria. Não aplique a contagem de 15/18 caracteres a esses códigos.",
+    "semantico.contexto.PS-018:4.4:Cliente": "As contagens de 15/18 caracteres valem só para a codificação da PdA (ex.: RD-771-RL-67131 sem sufixo, RD-771-RL-67131-00 com sufixo). Documentos da Vale têm codificação própria no padrão RL-1850PI-X-54747 (17 caracteres sem revisão); normas e procedimentos citados (PNR-000100, NOR-0003, RISR etc.) também têm codificação própria. Não aplique a contagem de 15/18 caracteres a esses códigos.",
 
     "semantico.regrasHabilitadas": "PS-002:4.2:Cliente|PS-002:4.3.4.2:Pda|PS-002:4.3.4.5:Pda|PS-002:4.3.7:Pda|PS-002:4.3.7:Cliente|PS-002:4.3.9:Pda|PS-002:4.3.9:Cliente|PS-002:4.3.3 (letra e):Pda|PS-018:4.3:Pda|PS-018:4.3.2 (letra a):Pda|PS-018:4.4:Pda|PS-018:4.4:Cliente|PS-018:4.7:Pda|PS-018:4.8:Pda|PS-018:4.9:Pda|PS-018:4.9:Cliente|PS-024:4.3:Pda|PS-024:4.3:Cliente"
   }

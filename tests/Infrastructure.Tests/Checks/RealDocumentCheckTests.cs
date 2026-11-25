@@ -106,10 +106,6 @@ public class RealDocumentCheckTests
         // legendas não constam do índice.
         ("RN-778-ET-67440-00.docx", "PS-002:4.3.8:Cliente"),
         ("RN-778-ET-67440-00.docx", "PS-002:4.3.4.4:Pda"),
-        // Vale: o sumário só traz os títulos, sem lista de figuras e tabelas.
-        ("RD-276-RL-68014-01.docx", "PS-002:4.3.4.4:Pda"),
-        ("RD-673-RL-65239-00.docx", "PS-002:4.3.4.4:Pda"),
-        ("RD-771-RL-67131-00.docx", "PS-002:4.3.4.4:Pda"),
         // RD-673: "Metodologia FMEA aplicada ao HIRA" é nível 3 logo abaixo de um nível 1.
         ("RD-673-RL-65239-00.docx", "PS-002:4.3.5.2:Cliente")
     ];
@@ -241,6 +237,43 @@ public class RealDocumentCheckTests
                 WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.6.5")
             .RunAsync(ctx, TestContext.Current.CancellationToken);
         numeracao.Violations.Should().NotContain(v => v.Message.Contains("folha de rosto"));
+    }
+
+    /// <summary>
+    /// O sumário do modelo da Vale traz só os títulos; a relação de figuras e tabelas no índice
+    /// (PS-002 4.3.4.4) não é exigida para ela — o profile desliga a regra.
+    /// </summary>
+    [Fact]
+    public async Task Vale_nao_exige_figuras_e_tabelas_no_indice()
+    {
+        var ctx = ReferenceDocumentContext("RD-673-RL-65239-00.docx");
+
+        var resultado = await new IndiceConteudoCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.4.4")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
+
+        resultado.Status.Should().Be(CheckStatus.Skipped);
+        resultado.Violations.Should().BeEmpty();
+        resultado.Note.Should().Contain("não exigida");
+    }
+
+    /// <summary>
+    /// Depois da capa da Vale vem a página do índice: o título "ÍNDICE"/"SUMÁRIO" e uma tabela
+    /// "ITEM | DESCRIÇÃO | PÁGINA" antes da primeira entrada. Essa tabela não é da capa — lida
+    /// como formulário, a IA pedia para "preencher o campo PÁGINA".
+    /// </summary>
+    [Theory]
+    [InlineData("RD-276-RL-68014-01.docx")]
+    [InlineData("RD-673-RL-65239-00.docx")]
+    [InlineData("RD-771-RL-67131-00.docx")]
+    public void Folha_de_rosto_da_Vale_termina_antes_do_indice(string arquivo)
+    {
+        var ctx = ReferenceDocumentContext(arquivo);
+
+        var capa = DocumentoTexto.FolhaDeRosto(ctx.Structure);
+
+        capa.Where(p => p.TableIndex is not null).Select(p => p.TableIndex).Distinct().Should().Equal(0);
+        capa.Should().NotContain(p => DocumentoTexto.Normalizar(p.Text) == "pagina");
     }
 
     /// <summary>

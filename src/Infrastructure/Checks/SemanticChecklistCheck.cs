@@ -38,7 +38,7 @@ public sealed class SemanticChecklistCheck : IRuleCheck
 
     public async Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
-        var instrucao = MontarInstrucao(_entry);
+        var instrucao = MontarInstrucao(_entry, ctx.Profile);
         var conteudo = _evidence.Build(ctx, _entry);
 
         var avaliacao = await _semantic.AvaliarAsync(instrucao, conteudo, _modelo, cancellationToken);
@@ -73,7 +73,7 @@ public sealed class SemanticChecklistCheck : IRuleCheck
         }
     }
 
-    private static string MontarInstrucao(ChecklistEntry entry)
+    internal static string MontarInstrucao(ChecklistEntry entry, WordComplianceValidator.Core.Profile.ClientProfile? profile = null)
     {
         var partes = new List<string>
         {
@@ -83,6 +83,15 @@ public sealed class SemanticChecklistCheck : IRuleCheck
         };
         if (!string.IsNullOrWhiteSpace(entry.Observacao))
             partes.Add($"Observação do checklist: {entry.Observacao}");
+
+        // Contexto do cliente, do profile: o checklist é escrito para o padrão PdA e não
+        // descreve o modelo de cada cliente. "semantico.contexto" vale para todas as regras;
+        // "semantico.contexto.<Ref>" só para uma (ex.: as contagens de 15/18 caracteres do
+        // PS-018 4.4 são da codificação PdA, não da codificação da Vale).
+        if (profile?.Get("semantico.contexto") is { Length: > 0 } geral)
+            partes.Add($"Contexto do cliente: {geral}");
+        if (profile?.Get($"semantico.contexto.{entry.Ref}") is { Length: > 0 } daRegra)
+            partes.Add($"Contexto do cliente para esta regra: {daRegra}");
 
         return string.Join("\n", partes.Where(p => !string.IsNullOrWhiteSpace(p)));
     }

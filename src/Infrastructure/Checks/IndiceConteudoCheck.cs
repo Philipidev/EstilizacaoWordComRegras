@@ -78,6 +78,12 @@ public sealed class IndiceConteudoCheck : IRuleCheck
 
     private RuleCheckResult AvaliarElementosGraficos(DocumentContext ctx, List<string> indiceNorm, int totalEntradas)
     {
+        // Há clientes cujo modelo de sumário traz só os títulos, sem relação de figuras e
+        // tabelas (a Vale): o profile desliga a exigência com indice.exigirElementosGraficos=false.
+        if (string.Equals(ctx.Profile.Get("indice.exigirElementosGraficos"), "false", StringComparison.OrdinalIgnoreCase))
+            return new RuleCheckResult(Ref, CheckStatus.Skipped, Array.Empty<Violation>(),
+                Note: "Relação de elementos gráficos no índice não exigida para este cliente (indice.exigirElementosGraficos=false).");
+
         // As próprias entradas da lista de figuras casam com o regex de legenda — excluí-las
         // evita comparar o índice consigo mesmo.
         var legendas = ctx.Structure.Paragraphs

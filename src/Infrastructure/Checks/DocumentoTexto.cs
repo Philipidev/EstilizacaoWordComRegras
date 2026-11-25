@@ -39,7 +39,11 @@ public static class DocumentoTexto
             // Título vazio não é fronteira: o RN799 tem dois parágrafos vazios com nível 1 no
             // meio da capa, e cortar ali escondia a codificação da folha de rosto.
             var titulo = p.OutlineLevel == 0 && !string.IsNullOrWhiteSpace(p.Text);
-            if (titulo || EhEntradaIndice(p)) return lista;
+            // O título do índice ("ÍNDICE", "SUMÁRIO") também encerra a capa. No modelo da Vale
+            // ele vem seguido de uma tabela "ITEM | DESCRIÇÃO | PÁGINA" antes da primeira
+            // entrada; sem este corte, essa tabela era lida como formulário da capa com o campo
+            // "PÁGINA" em branco.
+            if (titulo || EhEntradaIndice(p) || EhTituloDoIndice(p)) return lista;
             lista.Add(p);
         }
         // Sem título nem índice o "fim da capa" não é observável: vale o limite.
@@ -95,6 +99,10 @@ public static class DocumentoTexto
         doc.Paragraphs
            .Where(p => !string.IsNullOrWhiteSpace(p.Text) && EhEntradaIndice(p))
            .ToList();
+
+    /// <summary>Parágrafo solto (fora de tabela) que é só o título do índice.</summary>
+    private static bool EhTituloDoIndice(ExtractedParagraph p) =>
+        !p.IsInTable && Normalizar(p.Text) is "indice" or "sumario" or "indice geral" or "sumario geral";
 
     /// <summary>true quando o parágrafo é uma entrada de índice (TOC ou lista de elementos).</summary>
     public static bool EhEntradaIndice(ExtractedParagraph p) =>

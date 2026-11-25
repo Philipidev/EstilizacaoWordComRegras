@@ -219,6 +219,9 @@ ser resolvido são **ignorados**, não contados como divergentes.
 |---|---|---|
 | `elementosGraficos.toleranciaPercentual` | `20` | % de figuras não centralizadas ou de legendas mal posicionadas tolerado (`ElementosGraficosCheck`, PS-002:4.3.6.3/4.3.6.4). |
 | `numeracao.exigirDireita` | `false` | `true` exige que o cabeçalho com o campo `PAGE` tenha parágrafo alinhado à direita (`NumeracaoPaginasCheck`, PS-002:4.3.6.5). |
+| `indice.exigirElementosGraficos` | `true` | `false` deixa de cobrar a relação de figuras e tabelas no índice (PS-002:4.3.4.4). Para clientes cujo sumário traz só os títulos — a Vale. |
+| `semantico.contexto` | (vazio) | Texto acrescentado à instrução de todas as regras avaliadas pela IA: descreve o modelo do cliente, que o checklist (escrito para o padrão PdA) não descreve. |
+| `semantico.contexto.<Ref>` | (vazio) | Idem, só para uma regra (ex.: `semantico.contexto.PS-018:4.4:Cliente`). |
 | `numeracao.permitirNaFolhaDeRosto` | `false` | `true` aceita numeração na folha de rosto. Para clientes cujo modelo já numera a capa — a Vale, em que a capa é a folha de revisões do cliente ("PÁGINA 1/23"). |
 | `painelNavegacao.comprimentoMaximoTitulo` | `200` | Acima desse número de caracteres, um "título" é reportado como provável parágrafo de corpo marcado indevidamente (`PainelNavegacaoCheck`, PS-002:4.3.4.6/4.3.5.2). |
 
