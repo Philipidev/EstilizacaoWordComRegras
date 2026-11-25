@@ -253,7 +253,7 @@
     <a href="#preparar">1. Preparar</a>
     <a href="#abrir">2. Abrir</a>
     <a href="#documento">3. Escolher o documento</a>
-    <a href="#tipo">4. Tipo de revisão</a>
+    <a href="#tipo">4. Cliente e tipo de revisão</a>
     <a href="#resultado">5. Resultado</a>
     <a href="#word">6. Comentários no Word</a>
     <a href="#varios">Vários de uma vez</a>
@@ -283,7 +283,6 @@
       <div class="pasta">
 📁 Revisor<br>
 &nbsp;&nbsp;&nbsp;⚙️ Revisor.exe &nbsp;&nbsp;<span style="color:var(--suave)">← o programa</span><br>
-&nbsp;&nbsp;&nbsp;📄 appsettings.json<br>
 &nbsp;&nbsp;&nbsp;📄 Como usar o Revisor.html &nbsp;&nbsp;<span style="color:var(--suave)">← este tutorial</span><br>
 &nbsp;&nbsp;&nbsp;📁 profiles<br>
 &nbsp;&nbsp;&nbsp;📁 templates
@@ -359,7 +358,17 @@
   <div class="passo">
     <div class="numero">4</div>
     <div>
-      <h2>Escolha o tipo de revisão</h2>
+      <h2>Escolha o cliente e o tipo de revisão</h2>
+      <p>Primeiro, diga de qual cliente é o documento. Cada cliente tem o seu modelo (capa, quadro,
+      codificação, fonte), e o Revisor confere o documento contra o modelo certo.</p>
+      <div class="terminal" role="img" aria-label="Pergunta sobre o cliente">
+        <div class="barra">Revisor</div>
+<pre><span class="t-azul">?</span> <span class="t-negrito">De qual cliente é o documento?</span>
+
+<span class="t-selecionado">&gt; MRN</span>   <span class="t-suave">mrn.json</span>
+  Vale  <span class="t-suave">vale.json</span></pre>
+      </div>
+      <p>Depois, o tipo de revisão:</p>
       <div class="terminal" role="img" aria-label="Pergunta sobre o tipo de revisão">
         <div class="barra">Revisor</div>
 <pre><span class="t-azul">?</span> <span class="t-negrito">Que tipo de revisão?</span>
@@ -451,7 +460,7 @@
 <section id="varios">
   <h2>Vários documentos de uma vez</h2>
   <p>Selecione vários .docx no Explorador de Arquivos e <strong>arraste todos juntos</strong> sobre o
-  <code>Revisor.exe</code>. Ele pergunta o tipo de revisão uma vez, revisa um por um e, no fim, mostra uma
+  <code>Revisor.exe</code>. Ele pergunta o cliente e o tipo de revisão uma vez, revisa um por um e, no fim, mostra uma
   tabela com quantos pontos cada documento tem a corrigir e a conferir.</p>
   <p>Para parar uma revisão no meio, tecle <kbd>Ctrl</kbd> + <kbd>C</kbd>.</p>
 </section>
