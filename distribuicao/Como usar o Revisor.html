@@ -359,15 +359,31 @@
     <div class="numero">4</div>
     <div>
       <h2>Escolha o cliente e o tipo de revisão</h2>
-      <p>Primeiro, diga de qual cliente é o documento. Cada cliente tem o seu modelo (capa, quadro,
-      codificação, fonte), e o Revisor confere o documento contra o modelo certo.</p>
-      <div class="terminal" role="img" aria-label="Pergunta sobre o cliente">
+      <p>Primeiro, o <strong>cliente</strong>. O Revisor reconhece sozinho de qual cliente é o documento
+      pelo código do cliente que está no quadro "Características" (MRN: <code>QD5-PDA-26-04-016-SP</code>;
+      Vale: <code>RL-1850PI-X-54747</code>) e mostra o nome em destaque. Cada cliente tem o seu modelo
+      (capa, quadro, codificação, fonte), e o documento é conferido contra o modelo desse cliente.</p>
+      <div class="terminal" role="img" aria-label="Cliente identificado e pergunta de confirmação">
         <div class="barra">Revisor</div>
-<pre><span class="t-azul">?</span> <span class="t-negrito">De qual cliente é o documento?</span>
+<pre><span class="t-verde">╔════════════════════════════════════════════════════╗
+║  ✔ Cliente identificado pelo documento             ║
+║   __     __     _      _       _____               ║
+║   \ \   / /    / \    | |     | ____|              ║
+║    \ \ / /    / _ \   | |     |  _|                ║
+║     \ V /    / ___ \  | |___  | |___               ║
+║      \_/    /_/   \_\ |_____| |_____|              ║
+║  Código do cliente encontrado: RL-1850PI-X-54747   ║
+║  O documento será conferido contra o modelo Vale.  ║
+╚════════════════════════════════════════════════════╝</span>
 
-<span class="t-selecionado">&gt; MRN</span>   <span class="t-suave">mrn.json</span>
-  Vale  <span class="t-suave">vale.json</span></pre>
+<span class="t-azul">?</span> <span class="t-negrito">Confirme o cliente</span> <span class="t-suave">(Enter confirma · ↑↓ se for outro)</span>
+
+<span class="t-selecionado">&gt; Vale</span> <span class="t-verde">← identificado no documento</span>
+  MRN  <span class="t-suave">mrn.json</span></pre>
       </div>
+      <p>Confira o nome em destaque e tecle <kbd>Enter</kbd>. Se o documento for de outro cliente, escolha
+      com <kbd>↑</kbd> <kbd>↓</kbd>. Quando o código não é reconhecido (um formulário em branco, por exemplo),
+      o Revisor pergunta "De qual cliente é o documento?".</p>
       <p>Depois, o tipo de revisão:</p>
       <div class="terminal" role="img" aria-label="Pergunta sobre o tipo de revisão">
         <div class="barra">Revisor</div>

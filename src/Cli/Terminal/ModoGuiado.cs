@@ -59,7 +59,9 @@ public sealed class ModoGuiado(
             var documento = fila.Count > 0 ? fila.Dequeue() : PerguntarDocumento();
             if (documento is null) break;
 
-            profile ??= await EscolherProfile(cancellationToken);
+            // O cliente é decidido documento a documento: arrastando vários, podem ser de
+            // clientes diferentes. A última escolha fica pré-selecionada na próxima pergunta.
+            profile = await EscolherProfile(documento, profile, cancellationToken);
             if (profile is null) return 1;
             semIa ??= EscolherModo();
 
@@ -214,7 +216,13 @@ public sealed class ModoGuiado(
         return null;
     }
 
-    private async Task<string?> EscolherProfile(CancellationToken cancellationToken)
+    /// <summary>
+    /// Cliente do documento. Com um profile só, é ele. Com vários, o Revisor tenta reconhecer o
+    /// cliente pela codificação do documento: reconhecido, mostra o nome em destaque e já o deixa
+    /// selecionado — Enter confirma, as setas trocam. Sem reconhecimento, pergunta, com a última
+    /// escolha pré-selecionada.
+    /// </summary>
+    private async Task<string?> EscolherProfile(string documento, string? anterior, CancellationToken cancellationToken)
     {
         if (profiles.Count == 0)
         {
@@ -227,11 +235,23 @@ public sealed class ModoGuiado(
         var nomes = new Dictionary<string, string>();
         foreach (var p in profiles) nomes[p] = await NomeDoCliente(p, cancellationToken) ?? Path.GetFileNameWithoutExtension(p);
 
+        var identificado = await IdentificadorDeCliente.IdentificarAsync(documento, profiles, cancellationToken);
+        var sugerido = identificado?.Profile ?? anterior;
+        if (identificado is not null) tela.ClienteIdentificado(identificado.Cliente, identificado.Codigo);
+
+        // O sugerido vem primeiro: é onde o cursor começa, e Enter o confirma.
+        var opcoes = sugerido is null ? profiles.ToList() : profiles.OrderBy(p => p == sugerido ? 0 : 1).ToList();
+        var titulo = identificado is not null
+            ? $"[bold {Apresentacao.Cor.Destaque}]?[/] [bold]Confirme o cliente[/] [dim](Enter confirma · ↑↓ se for outro)[/]"
+            : $"[bold {Apresentacao.Cor.Destaque}]?[/] [bold]De qual cliente é o documento?[/] [dim](não deu para reconhecer pelo código)[/]";
+
         Console.WriteLine();
         var perfil = Console.Prompt(new SelectionPrompt<string>()
-            .Title($"[bold {Apresentacao.Cor.Destaque}]?[/] [bold]De qual cliente é o documento?[/]")
-            .UseConverter(p => $"{Markup.Escape(nomes[p])} [dim]{Markup.Escape(Path.GetFileName(p))}[/]")
-            .AddChoices(profiles));
+            .Title(titulo)
+            .UseConverter(p => p == identificado?.Profile
+                ? $"[bold {Apresentacao.Cor.Ok}]{Markup.Escape(nomes[p])}[/] [{Apresentacao.Cor.Ok}]← identificado no documento[/]"
+                : $"{Markup.Escape(nomes[p])} [dim]{Markup.Escape(Path.GetFileName(p))}[/]")
+            .AddChoices(opcoes));
         Escolhido($"Cliente: {nomes[perfil]}");
         return perfil;
     }

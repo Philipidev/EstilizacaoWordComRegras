@@ -27,7 +27,7 @@ public sealed class ModoGuiadoTests : IDisposable
             .Paragrafo("Texto do relatório técnico.")
             .Salvar(Path.Combine(_pasta, nome));
 
-    private (ModoGuiado Modo, TestConsole Console) Montar()
+    private (ModoGuiado Modo, TestConsole Console) Montar(bool todosOsClientes = false)
     {
         var console = new TestConsole().Interactive();
         console.Profile.Width = 120;
@@ -37,10 +37,69 @@ public sealed class ModoGuiadoTests : IDisposable
             LocalizadorDeRecursos.Checklist(),
             // Um profile só: com mais de um, o modo guiado pergunta o cliente, e estes testes
             // não tratam dessa pergunta.
-            LocalizadorDeRecursos.Profiles().Where(p => Path.GetFileName(p) == "mrn.json").ToList(),
+            todosOsClientes
+                ? LocalizadorDeRecursos.Profiles()
+                : LocalizadorDeRecursos.Profiles().Where(p => Path.GetFileName(p) == "mrn.json").ToList(),
             _abertos.Add,
             _pastasAbertas.Add);
         return (modo, console);
+    }
+
+    private string DocumentoReal(string nome)
+    {
+        var dir = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(dir, "EstilizacaoWordComRegras.slnx")))
+            dir = Path.GetFullPath(Path.Combine(dir, ".."));
+        var destino = Path.Combine(_pasta, nome);
+        File.Copy(Path.Combine(dir, "templates", nome), destino);
+        return destino;
+    }
+
+    [Fact]
+    public async Task Cliente_reconhecido_pelo_codigo_aparece_em_destaque_e_Enter_confirma()
+    {
+        var documento = DocumentoReal("RD-771-RL-67131-00.docx");
+        var (modo, console) = Montar(todosOsClientes: true);
+        console.Input.PushTextWithEnter($"\"{documento}\"");
+        console.Input.PushKey(ConsoleKey.Enter);   // confirma o cliente sugerido
+        Escolher(console, 3);
+
+        await modo.ExecutarAsync([], "2.0.0", TestContext.Current.CancellationToken);
+
+        console.Output.Should().Contain("Cliente identificado pelo documento")
+            .And.Contain("RL-1850PI-X-54747")
+            .And.Contain("Confirme o cliente")
+            .And.Contain("Cliente: Vale");
+        File.Exists(Path.Combine(_pasta, "RD-771-RL-67131-00-REVISADO.docx")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cliente_reconhecido_pode_ser_trocado_pela_pessoa()
+    {
+        var documento = DocumentoReal("RD-771-RL-67131-00.docx");
+        var (modo, console) = Montar(todosOsClientes: true);
+        console.Input.PushTextWithEnter($"\"{documento}\"");
+        Escolher(console, 1);                       // desce para o outro cliente
+        Escolher(console, 3);
+
+        await modo.ExecutarAsync([], "2.0.0", TestContext.Current.CancellationToken);
+
+        console.Output.Should().Contain("Cliente: MRN");
+    }
+
+    [Fact]
+    public async Task Sem_codigo_reconhecivel_o_cliente_e_perguntado()
+    {
+        var documento = Documento();
+        var (modo, console) = Montar(todosOsClientes: true);
+        console.Input.PushTextWithEnter($"\"{documento}\"");
+        console.Input.PushKey(ConsoleKey.Enter);
+        Escolher(console, 3);
+
+        await modo.ExecutarAsync([], "2.0.0", TestContext.Current.CancellationToken);
+
+        console.Output.Should().Contain("De qual cliente é o documento?")
+            .And.NotContain("Cliente identificado pelo documento");
     }
 
     // Menu final: [Abrir o documento revisado, Abrir a pasta, Revisar outro, Sair].

@@ -38,6 +38,30 @@ public sealed class Apresentacao(IAnsiConsole console)
         public const string Neutro = "grey";
     }
 
+    // ------------------------------------------------------------------ cliente
+
+    /// <summary>
+    /// Cliente reconhecido no documento, em destaque: o nome em letras grandes e o código que
+    /// o identificou. É o modelo contra o qual o documento será conferido, então não pode
+    /// passar despercebido.
+    /// </summary>
+    public void ClienteIdentificado(string cliente, string codigo)
+    {
+        var corpo = new Rows(
+            new Markup($"[bold {Cor.Ok}]✔ Cliente identificado pelo documento[/]"),
+            new FigletText(cliente.ToUpperInvariant()).Color(Color.Green),
+            new Markup($"[dim]Código do cliente encontrado:[/] [bold]{Markup.Escape(codigo)}[/]"),
+            new Markup($"[dim]O documento será conferido contra o modelo[/] [bold {Cor.Ok}]{Markup.Escape(cliente)}[/][dim].[/]"));
+
+        Console.WriteLine();
+        Console.Write(new Panel(corpo)
+        {
+            Border = BoxBorder.Double,
+            BorderStyle = new Style(Color.Green),
+            Padding = new Padding(2, 0, 2, 1)
+        });
+    }
+
     // ------------------------------------------------------------------ boas-vindas
 
     /// <summary>Cartão de abertura do modo guiado, no espírito dos CLIs de assistente.</summary>

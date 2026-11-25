@@ -157,7 +157,7 @@ reviewCmd.SetAction(async (parsed, cancellationToken) =>
         return 1;
     }
 
-    var profilePath = ResolverProfile(parsed.GetValue(profileOpt), tela);
+    var profilePath = await ResolverProfile(parsed.GetValue(profileOpt), doc.FullName, tela, cancellationToken);
     if (profilePath is null) return 1;
 
     var pedido = new PedidoDeRevisao(
@@ -171,9 +171,11 @@ reviewCmd.SetAction(async (parsed, cancellationToken) =>
     return resultado?.CodigoDeSaida ?? 1;
 });
 
-// Profile explícito vence; sem ele, só resolve sozinho quando a escolha é inequívoca. Havendo
-// vários, listar os nomes é mais útil do que exigir que a pessoa vá procurar a pasta.
-static string? ResolverProfile(FileInfo? informado, Apresentacao tela)
+// Profile explícito vence; sem ele, só resolve sozinho quando a escolha é inequívoca: um
+// profile só, ou o cliente reconhecido pela codificação do documento. Sem reconhecimento,
+// listar os nomes é mais útil do que exigir que a pessoa vá procurar a pasta.
+static async Task<string?> ResolverProfile(FileInfo? informado, string documento, Apresentacao tela,
+    CancellationToken cancellationToken)
 {
     if (informado is not null)
     {
@@ -194,7 +196,13 @@ static string? ResolverProfile(FileInfo? informado, Apresentacao tela)
         return null;
     }
 
-    tela.Erro("Existe mais de um profile; escolha um com --profile", null,
+    if (await IdentificadorDeCliente.IdentificarAsync(documento, disponiveis, cancellationToken) is { } identificado)
+    {
+        tela.ClienteIdentificado(identificado.Cliente, identificado.Codigo);
+        return identificado.Profile;
+    }
+
+    tela.Erro("Não deu para reconhecer o cliente pelo código do documento; escolha com --profile", null,
         "Disponíveis: " + string.Join(", ", disponiveis.Select(Path.GetFileName)));
     return null;
 }
@@ -237,7 +245,7 @@ evidenciaCmd.SetAction(async (parsed, cancellationToken) =>
         tela.Erro(problema.Titulo, doc.FullName, problema.Sugestao);
         return 1;
     }
-    var profilePath = ResolverProfile(parsed.GetValue(evidenciaProfileOpt), tela);
+    var profilePath = await ResolverProfile(parsed.GetValue(evidenciaProfileOpt), doc.FullName, tela, cancellationToken);
     if (profilePath is null) return 1;
 
     var perfil = await new JsonClientProfileRepository().LoadAsync(profilePath, cancellationToken);
