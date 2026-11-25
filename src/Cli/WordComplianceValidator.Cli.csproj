@@ -48,9 +48,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- O appsettings.json vai DENTRO do executável (modelo, esforço, tarifas): o Revisor.exe
+         publicado roda sozinho, sem arquivo de configuração ao lado. Um appsettings.json posto
+         ao lado do .exe ainda é lido e vence o embutido, para ajuste sem republicar. -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+    <EmbeddedResource Include="appsettings.json" LogicalName="Revisor.ConfiguracaoPadrao.json" />
     <!-- Não rastreado pelo git (.gitignore). Guarda a OPENAI_API_KEY local;
          precisa ser copiado porque Program.cs lê de AppContext.BaseDirectory. -->
     <None Update="appsettings.Development.json" Condition="Exists('appsettings.Development.json')">

@@ -33,9 +33,12 @@ if (Console.IsErrorRedirected)
 System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = new System.Globalization.CultureInfo("pt-BR");
 System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo("pt-BR");
 
-var construtor = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: true);
+// O appsettings.json vai embutido no executável (ver o csproj): o Revisor.exe publicado não
+// depende de arquivo de configuração ao lado. Um appsettings.json na pasta ainda vence.
+var construtor = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory);
+using var configuracaoPadrao = Assembly.GetExecutingAssembly().GetManifestResourceStream("Revisor.ConfiguracaoPadrao.json");
+if (configuracaoPadrao is not null) construtor.AddJsonStream(configuracaoPadrao);
+construtor.AddJsonFile("appsettings.json", optional: true);
 // Só existe no pacote gerado por "publicar.ps1 -EmbutirChave" (ver o csproj): é como a equipe
 // recebe o Revisor com a IA pronta, sem configurar nada. Arquivo local e variável de ambiente,
 // adicionados depois, continuam vencendo.
