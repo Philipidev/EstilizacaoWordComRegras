@@ -71,7 +71,7 @@ Três campos no topo:
 
 > ⚠️ Esse mínimo roda **apenas os checks determinísticos**. Para as regras avaliadas por LLM
 > é preciso `semantico.regrasHabilitadas` (seção 4.11) — na prática, **copie
-> `profiles/exemplo.json`** em vez de partir deste esqueleto.
+> `profiles/mrn.json`** em vez de partir deste esqueleto.
 
 ---
 
@@ -312,18 +312,18 @@ Mapa rápido de qual regra usa qual parâmetro:
 | `PS-002:4.3.6.5` (Numeração das páginas) | `numeracao.exigirDireita` |
 | `PS-002:4.3.8` (Apêndice e anexo) | `quadroCaracteristicas.aliases` |
 | `PS-024:4.1.2` / `4.1.3` / `4.1.4` (Tarjas de emissão) | `tarja.comentariosCliente`, `tarja.naoValidoExecucao`, `tarja.exigeNaoValidoExecucao`, `quadroCaracteristicas.aliases`, `revisao.aliasesRotulo` |
-| Regras do motor semântico (18 em `exemplo.json`) | `semantico.regrasHabilitadas`, `semantico.modelo.default`, `semantico.modelo.<Ref>` |
+| Regras do motor semântico (18 em `mrn.json`) | `semantico.regrasHabilitadas`, `semantico.modelo.default`, `semantico.modelo.<Ref>` |
 
 ---
 
 ## 6. Exemplo completo de profile
 
-A fonte da verdade é `profiles/exemplo.json` — este bloco é uma cópia e pode divergir; em
+A fonte da verdade é `profiles/mrn.json` — este bloco é uma cópia e pode divergir; em
 caso de dúvida, leia o arquivo.
 
 ```json
 {
-  "cliente": "MRN (exemplo)",
+  "cliente": "MRN",
   "versao": "1.1",
   "parameters": {
     "logomarcas.minimo": "2",
@@ -376,7 +376,7 @@ caso de dúvida, leia o arquivo.
 
 Workflow recomendado:
 
-1. **Copie** `profiles/exemplo.json` para `profiles/<nome-do-cliente>.json`.
+1. **Copie** `profiles/mrn.json` para `profiles/<nome-do-cliente>.json`.
 2. **Atualize** `cliente` e `versao`.
 3. **Ajuste o regex de codificação** (`codificacao.pdaRegex` /
    `clienteRegex`) para refletir o padrão do cliente.
@@ -398,10 +398,10 @@ Workflow recomendado:
 
 > O contador `pulado` **não** chega a zero: itens sem check dedicado nem regra semântica
 > habilitada — todo o PS-005, por exemplo — permanecem como revisão manual. Na execução de
-> referência com `exemplo.json`: 32 `passou` e 54 `pulado` de 86.
+> referência com `mrn.json`: 32 `passou` e 54 `pulado` de 86.
 
 7. **Revise a allow-list semântica.** Se você começou de um profile enxuto em vez de copiar o
-   `exemplo.json`, `semantico.regrasHabilitadas` provavelmente está ausente e ~23 regras nunca
+   `mrn.json`, `semantico.regrasHabilitadas` provavelmente está ausente e ~23 regras nunca
    rodaram — elas aparecem apenas como `Skipped`, sem erro. Ver seção 4.11.
 
 ### Quando precisar de campo novo no quadro
@@ -436,7 +436,7 @@ O `JsonClientProfileRepository` valida o profile **no momento do load**:
 Exemplo de mensagem ao rodar com profile quebrado:
 
 ```
-Profile 'MRN (exemplo)' contém parâmetros inválidos:
+Profile 'MRN' contém parâmetros inválidos:
   - 'codificacao.pdaRegex': regex inválido — Invalid pattern '[' at offset 1.
 ```
 
@@ -460,10 +460,9 @@ Falhar early aqui é melhor do que falhar 86 regras silenciosamente.
 
 ```
 profiles/
-  exemplo.json       ← profile de exemplo (MRN — comitado)
-  mrn.json           ← (você cria) profile real do cliente MRN
-  vale.json          ← (você cria) profile real do cliente Vale
-  ...
+  mrn.json           ← profile da MRN (comitado)
+  vale.json          ← profile da Vale (comitado)
+  <cliente>.json     ← (você cria) um por cliente novo
 ```
 
 Para usar:

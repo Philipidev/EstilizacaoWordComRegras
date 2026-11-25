@@ -55,7 +55,7 @@ public class CatalogCoverageTests
     {
         var catalogo = await CatalogoAsync();
         var profile = await new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
+            .LoadAsync(RepoFile("profiles", "mrn.json"), TestContext.Current.CancellationToken);
 
         var dedicados = CheckRegistry.Deterministicos(SemanticStub.Instancia)
             .Select(c => c.Ref.ToString())
@@ -95,7 +95,7 @@ public class CatalogCoverageTests
     {
         var catalogo = await CatalogoAsync();
         var profile = await new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
+            .LoadAsync(RepoFile("profiles", "mrn.json"), TestContext.Current.CancellationToken);
 
         var habilitadas = (profile.Get("semantico.regrasHabilitadas") ?? "")
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -110,7 +110,7 @@ public class CatalogCoverageTests
     public async Task Nenhuma_regra_do_PS005_consome_tokens_semanticos()
     {
         var profile = await new JsonClientProfileRepository()
-            .LoadAsync(RepoFile("profiles", "exemplo.json"), TestContext.Current.CancellationToken);
+            .LoadAsync(RepoFile("profiles", "mrn.json"), TestContext.Current.CancellationToken);
 
         var ps005 = (await CatalogoAsync()).Where(e => e.Ref.Ps.Equals("PS-005", StringComparison.OrdinalIgnoreCase)).ToList();
 

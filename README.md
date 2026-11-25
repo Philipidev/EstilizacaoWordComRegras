@@ -90,7 +90,7 @@ templates/
   RN-*.docx, RD-*.docx  ← documentos reais de teste (MRN e Vale), em versão leve:
                           imagens trocadas por 1 px com scripts/enxugar-docx.py
 profiles/
-  exemplo.json          ← perfil MRN
+  mrn.json          ← perfil MRN
   vale.json             ← perfil Vale (capa = folha de revisões do cliente)
 scripts/
   enxugar-docx.py       ← gera a cópia leve de um .docx para usar como teste
@@ -161,7 +161,7 @@ testada com `Spectre.Console.Testing` em `ModoGuiadoTests` simulando a digitaç�
 ```bash
 dotnet run --project src/Cli -- review \
   --doc      templates/RN799RL6496600.docx \
-  --profile  profiles/exemplo.json \
+  --profile  profiles/mrn.json \
   --out      output/revisado.docx
 ```
 
@@ -198,7 +198,7 @@ dotnet run --project src/Cli -- dump-checklist --checklist outro.xlsx
 ### `dump-evidencia` — ver o que o LLM recebe (debug)
 
 ```bash
-dotnet run --project src/Cli -- dump-evidencia --doc templates/RN799RL6496600.docx --profile profiles/exemplo.json
+dotnet run --project src/Cli -- dump-evidencia --doc templates/RN799RL6496600.docx --profile profiles/mrn.json
 ```
 
 Imprime o pacote de evidências que o motor semântico envia em toda chamada. É o primeiro
@@ -213,11 +213,11 @@ modelo.
 > o que é um profile, para que ele serve, todos os parâmetros disponíveis
 > e como criar/calibrar um para um novo cliente.
 
-Exemplo completo (`profiles/exemplo.json`):
+Exemplo completo (`profiles/mrn.json`):
 
 ```json
 {
-  "cliente": "MRN (exemplo)",
+  "cliente": "MRN",
   "versao": "1.0",
   "parameters": {
     "logomarcas.minimo": "2",
@@ -289,7 +289,7 @@ profile inválido provoca exceção imediata em vez de falhar silenciosamente.
 
 **44 entradas do CL-001** com `IRuleCheck` dedicado — **43** quando o LLM está desligado, já
 que `PS-002:4.3.2:Cliente` exige avaliação semântica — mais **18** elegíveis ao motor
-semântico no `profiles/exemplo.json`. Total: 62 de 86.
+semântico no `profiles/mrn.json`. Total: 62 de 86.
 
 As 24 restantes dependem de sistemas externos ao `.docx`: 22 entradas do PS-005 (fluxo
 Meridian, e-mails ao GQ, autoridade do aprovador) e as 2 de `4.3.3 (letra b)`, que exigem a
@@ -356,9 +356,9 @@ que `CatalogCoverageTests` audita.
 
 Modelo: **`gpt-6.2-sol`** com `reasoning_effort` **medium**, para todas as regras
 (`OpenAI:Model` e `OpenAI:ReasoningEffort`). O profile ainda aceita `semantico.modelo.<Ref>`
-para trocar o modelo de uma regra específica, mas o `exemplo.json` não usa.
+para trocar o modelo de uma regra específica, mas o `mrn.json` não usa.
 
-**Custo medido** (outubro/2026, `profiles/exemplo.json`, 20 chamadas por documento):
+**Custo medido** (outubro/2026, `profiles/mrn.json`, 20 chamadas por documento):
 
 | Documento | Entrada | em cache | Saída | Custo | Tempo |
 |---|---:|---:|---:|---:|---:|
@@ -404,7 +404,7 @@ caem no caminho regex-only / são puladas com nota explicativa.
 
 ## Validação contra documentos reais
 
-Última execução com `profiles/exemplo.json`:
+Última execução com `profiles/mrn.json`:
 
 | Documento | LLM | passou | falhou | pulado | erro |
 |---|---|---:|---:|---:|---:|

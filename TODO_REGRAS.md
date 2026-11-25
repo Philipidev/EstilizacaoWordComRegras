@@ -138,7 +138,7 @@ representam duas entradas cada, então o número de linhas é menor que o de ent
 - Total de itens no CL-001: **86**
 - Com `IRuleCheck` dedicado `[x]`: **44** — sendo **43** sem LLM
   (`PS-002:4.3.2:Cliente` exige avaliação semântica e só é registrado com a chave configurada)
-- Cobertos pelo motor semântico `[~]` (allow-list de `profiles/exemplo.json`): **18**
+- Cobertos pelo motor semântico `[~]` (allow-list de `profiles/mrn.json`): **18**
 - Manuais `[-]` — dependem de sistema externo: **24**
   (22 entradas do PS-005 + as 2 de `4.3.3 (letra b)`, que exigem o PL-011)
 - Soma: 44 + 18 + 24 = **86** ✅
@@ -149,7 +149,7 @@ representam duas entradas cada, então o número de linhas é menor que o de ent
 
 ## Resultado contra documentos reais
 
-Última execução com `profiles/exemplo.json`:
+Última execução com `profiles/mrn.json`:
 
 | Documento | LLM | passou | falhou | pulado | erro |
 |---|---|---:|---:|---:|---:|
@@ -199,7 +199,7 @@ Revisão de outubro/2026 (detalhes nos comentários de cada classe):
 - `ApendiceAnexoCheck`: numerais romanos, ADENDO, fronteira de palavra, sem autorreferência ao quadro.
 - `ContinuidadeTituloConteudoCheck`: títulos pelo nível de estrutura (antes não via nenhum).
 - `TarjaEmissaoCheck`: tarja em cabeçalho oculto só avisa; o histórico de revisões não conta como tarja.
-- `profiles/exemplo.json`: `codificacao.pdaRegex` descrevia a codificação do Cliente (QD5-PDA-…); agora descreve a da PdA (`RN-816-RL-67456`).
+- `profiles/mrn.json`: `codificacao.pdaRegex` descrevia a codificação do Cliente (QD5-PDA-…); agora descreve a da PdA (`RN-816-RL-67456`).
 
 ## LLM (semantic checker) — uso atual
 
@@ -285,7 +285,7 @@ Pendentes:
 
 1. Tornar os termos PT-BR remanescentes configuráveis (palavras em `MesAno` do
    `FolhaRostoCheck`) — desnecessário enquanto o escopo for só projetos brasileiros.
-2. Suporte a perfil "MRN" oficial (separar do `exemplo.json`) com aliases finos
+2. Profile da MRN (`mrn.json`) com aliases mais finos
    da terminologia do cliente real — e preencher `folhaRosto.contratante`, hoje vazio,
    o que mantém `PS-002:4.3.4.1:Pda` em `Skipped`.
 3. Migrar refs `[~]` com sinal determinístico para `[x]`. Candidatos mais claros:

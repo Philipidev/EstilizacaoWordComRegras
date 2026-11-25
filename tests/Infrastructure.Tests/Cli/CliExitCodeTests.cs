@@ -129,7 +129,7 @@ public class CliExitCodeTests
     /// <summary>Copia o profile de exemplo para um arquivo temporário, com ajustes opcionais.</summary>
     private static string ProfilePadrao(Action<Dictionary<string, string>>? ajustar = null)
     {
-        var original = JsonDocument.Parse(File.ReadAllText(RepoFile("profiles", "exemplo.json")));
+        var original = JsonDocument.Parse(File.ReadAllText(RepoFile("profiles", "mrn.json")));
         var raiz = original.RootElement;
 
         var parametros = raiz.GetProperty("parameters")

@@ -298,7 +298,7 @@ public class RealDocumentCheckTests
         // o que está cadastrado para a equipe.
         var profile = fileName.StartsWith("RD-", StringComparison.Ordinal)
             ? ProfileVale.Value
-            : new ClientProfile("MRN (exemplo)", "1.0", ProfileParameters);
+            : new ClientProfile("MRN", "1.0", ProfileParameters);
 
         return new DocumentContext(path, structure, profile);
     }

@@ -39,7 +39,7 @@ O arquivo original nunca é alterado — a cópia comentada é salva ao lado del
 | Microsoft Word (ou LibreOffice)             | abrir o `.docx` revisado e ver os comentários | sim (para enxergar)                                                                     |
 
 
-> Já há um profile pronto em `profiles/exemplo.json`. Para um cliente específico,
+> Já há um profile pronto em `profiles/mrn.json`. Para um cliente específico,
 > faça uma cópia e ajuste os parâmetros — veja a seção **"Profile do cliente"**
 > abaixo.
 
@@ -60,7 +60,7 @@ resolvido sozinho quando existe apenas um em `profiles/`, e a saída vai para
 `<documento>-REVISADO.docx`, na pasta do documento. Para controlar tudo:
 
 ```powershell
-dotnet run --project src/Cli -- review --doc      "templates\RN-816-RL-67456-00.docx" --profile  "profiles\exemplo.json" --out      "templates\out\RN-816-RL-67456-00-REVISADO.docx"
+dotnet run --project src/Cli -- review --doc      "templates\RN-816-RL-67456-00.docx" --profile  "profiles\mrn.json" --out      "templates\out\RN-816-RL-67456-00-REVISADO.docx"
 ```
 
 ---
@@ -99,7 +99,7 @@ dotnet run --project src/Cli -- review --doc      "templates\RN-816-RL-67456-00.
 ```powershell
 dotnet run --project src/Cli -- review `
   --doc "templates/RN-816-RL-67456-00.docx" `
-  --profile "profiles/exemplo.json" `
+  --profile "profiles/mrn.json" `
   --out "output/revisado.docx" `
   --no-llm
 ```
@@ -110,7 +110,7 @@ Saída esperada (exemplo real):
 ── Revisor · CL-001 ─────────────────────────────────────────────────────────
 
 Documento   RN799RL6496600.docx
-Cliente     MRN (exemplo)
+Cliente     MRN
 Checklist   CL-001-CL00100.xlsx
 Saída       revisado.docx
 
@@ -144,7 +144,7 @@ $env:OPENAI_API_KEY = "sk-proj-…"
 
 dotnet run --project src/Cli -- review `
   --doc "templates/RN-816-RL-67456-00.docx" `
-  --profile "profiles/exemplo.json" `
+  --profile "profiles/mrn.json" `
   --out "output/revisado.docx"
 ```
 
@@ -172,7 +172,7 @@ A precedência é: `OPENAI_API_KEY` (variável de ambiente) → `OpenAI:ApiKey` 
 ```powershell
 dotnet run --project src/Cli -- review `
   --doc "templates/RN-816-RL-67456-00.docx" `
-  --profile "profiles/exemplo.json" `
+  --profile "profiles/mrn.json" `
   --out "output/revisado.docx" `
   --no-llm --verbose
 ```
@@ -188,7 +188,7 @@ Sempre coloque caminhos com espaços entre aspas duplas:
 ```powershell
 dotnet run --project src/Cli -- review `
   --doc "C:\Meus Documentos\projeto X\rel-01.docx" `
-  --profile "profiles/exemplo.json" `
+  --profile "profiles/mrn.json" `
   --out "C:\Meus Documentos\projeto X\rel-01-revisado.docx"
 ```
 
@@ -296,7 +296,7 @@ específico. Estrutura mínima:
 > determinísticos, mesmo com a chave da OpenAI configurada, e as demais entradas aparecem
 > silenciosamente como `Skipped`.
 
-**Prefira copiar** `profiles/exemplo.json` para `profiles/<cliente>.json` e ajustar os
+**Prefira copiar** `profiles/mrn.json` para `profiles/<cliente>.json` e ajustar os
 valores — ele já traz a allow-list semântica, o tiering de modelo e os parâmetros de
 formatação do corpo.
 
@@ -358,7 +358,7 @@ Sugestão de fluxo na equipe:
 | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `[info] LLM desabilitado (sem OPENAI_API_KEY ou --no-llm)` sem você ter passado `--no-llm` | nenhuma chave encontrada — o CLI **não** dá erro, ele desliga o LLM em silêncio                                             | defina `$env:OPENAI_API_KEY` ou preencha `src/Cli/appsettings.Development.json`                                                                     |
 | Regras semânticas voltam como `[Error]` com `note: Erro ao executar check: …`              | chave inválida/expirada ou sem crédito — a exceção é capturada por regra pelo engine                                        | confira a chave; rode com `--no-llm` para isolar se o problema é só o LLM                                                                           |
-| Entradas do checklist ficam `Skipped` mesmo com o LLM ligado                               | o profile não lista os `Ref` em `semantico.regrasHabilitadas`                                                               | copie a allow-list de `profiles/exemplo.json` — ver seção 7                                                                                         |
+| Entradas do checklist ficam `Skipped` mesmo com o LLM ligado                               | o profile não lista os `Ref` em `semantico.regrasHabilitadas`                                                               | copie a allow-list de `profiles/mrn.json` — ver seção 7                                                                                         |
 | `Unhandled exception: System.IO.FileNotFoundException: Could not find file '…'`            | caminho de `--doc` ou `--profile` inexistente                                                                               | confira os caminhos (use aspas se houver espaços)                                                                                                   |
 | `Unhandled exception: System.IO.FileNotFoundException: Checklist .xlsx não encontrado.`    | `--checklist` aponta para arquivo inexistente, ou você rodou fora da raiz do repo (o default é relativo ao diretório atual) | rode a partir da raiz ou passe `--checklist` com caminho absoluto                                                                                   |
 | `Profile '<cliente>' contém parâmetros inválidos:` seguido de lista                        | regex inválido em `codificacao.*Regex` ou valor não-inteiro em `logomarcas.minimo` / `folhaRosto.paragrafosIniciais`        | corrija os parâmetros apontados na mensagem                                                                                                         |
@@ -407,7 +407,7 @@ configurada na máquina de destino, o Revisor roda apenas as verificações dete
 # Caminho mais curto, sem LLM, salvando o resultado:
 dotnet run --project src/Cli -- review `
   --doc "MEU-DOC.docx" `
-  --profile "profiles/exemplo.json" `
+  --profile "profiles/mrn.json" `
   --out "MEU-DOC-revisado.docx" `
   --no-llm
 ```
