@@ -87,9 +87,13 @@ tests/
     Fixtures/           DocxFixtureBuilder  ← gera .docx com defeito deliberado
 templates/
   checklists/           CL-001-CL00100.xlsx  ← checklist real (86 linhas)
-  RN799RL6496600.docx   ← documento de teste real (MRN)
+  RN-*.docx, RD-*.docx  ← documentos reais de teste (MRN e Vale), em versão leve:
+                          imagens trocadas por 1 px com scripts/enxugar-docx.py
 profiles/
-  exemplo.json          ← perfil MRN de exemplo
+  exemplo.json          ← perfil MRN
+  vale.json             ← perfil Vale (capa = folha de revisões do cliente)
+scripts/
+  enxugar-docx.py       ← gera a cópia leve de um .docx para usar como teste
 TODO_REGRAS.md          ← rastreamento por regra (status, implementação, heurísticas)
 ```
 

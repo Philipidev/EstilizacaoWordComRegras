@@ -39,8 +39,12 @@ public sealed class LocalizacaoCodificacaoCheck : IRuleCheck
 
         // Folha de rosto = capa até o primeiro título. Os cabeçalhos ficavam juntos e eram
         // eles que "achavam" a codificação: a folha de rosto real nem chegava a ser lida.
-        var folhaCodigo = Codificacao.EncontrarEmQualquer(
-            DocumentoTexto.FolhaDeRosto(ctx.Structure).Select(p => p.Text), pdaRx)?.Completo;
+        // Exceção: o cabeçalho da PRIMEIRA página faz parte da capa (modelo da Vale, em que a
+        // codificação só aparece ali).
+        var folhaCodigo = (Codificacao.EncontrarEmQualquer(
+                               DocumentoTexto.FolhaDeRosto(ctx.Structure).Select(p => p.Text), pdaRx)
+                           ?? Codificacao.EncontrarEmQualquer(DocumentoTexto.CabecalhoDaFolhaDeRosto(ctx), pdaRx))
+            ?.Completo;
 
         var stem = string.IsNullOrEmpty(ctx.Structure.FileName)
             ? null : Path.GetFileNameWithoutExtension(ctx.Structure.FileName);

@@ -94,7 +94,7 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
             sb.AppendLine($"- Propriedades: autor={props.Creator}; modificado por={props.LastModifiedBy}");
         sb.AppendLine();
 
-        AppendFolhaRosto(sb, doc);
+        AppendFolhaRosto(sb, ctx);
         AppendQuadroCaracteristicas(sb, ctx);
         AppendCabecalhosRodapes(sb, doc);
         AppendEstruturaTitulos(sb, doc);
@@ -105,8 +105,9 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
 
     private int RestanteOrcamento(StringBuilder sb) => Math.Max(0, _orcamento - sb.Length);
 
-    private static void AppendFolhaRosto(StringBuilder sb, DocumentStructure doc)
+    private static void AppendFolhaRosto(StringBuilder sb, DocumentContext ctx)
     {
+        var doc = ctx.Structure;
         // O corte por número de parágrafos vale só para o texto solto. Contar células de
         // tabela junto esgotava a cota antes de chegar à folha de rosto: a folha índice do
         // cliente sozinha ocupa ~200 parágrafos de célula, e a folha de rosto — onde estão
@@ -159,6 +160,17 @@ public sealed class DefaultEvidenceSelector : IEvidenceSelector
         {
             sb.AppendLine("### Parágrafos fora de tabela");
             foreach (var t in soltos) sb.AppendLine($"- {t}");
+        }
+
+        // No modelo da Vale a capa é a folha de revisões do cliente: título, Nº VALE, Nº da
+        // contratada e página ficam no cabeçalho da primeira página. Sem ele, o avaliador
+        // concluía que a capa não tinha título nem codificação.
+        var cabecalho = DocumentoTexto.CabecalhoDaFolhaDeRosto(ctx);
+        if (cabecalho.Count > 0)
+        {
+            sb.AppendLine("### Cabeçalho e rodapé exibidos na própria capa (fazem parte da folha de rosto)");
+            // Inteiro (até 600 caracteres): as codificações ficam no fim do cabeçalho.
+            foreach (var t in cabecalho) sb.AppendLine($"- {Resumo(t, 600)}");
         }
         sb.AppendLine();
     }

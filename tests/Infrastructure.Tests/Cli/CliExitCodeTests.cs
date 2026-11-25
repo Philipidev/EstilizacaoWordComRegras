@@ -23,7 +23,7 @@ public class CliExitCodeTests
     [Fact]
     public void Documento_conforme_sai_com_zero()
     {
-        // O documento conforme é o RN799. O RN-816 não serve aqui: ele tem referências cruzadas
+        // O documento conforme é o RN799. O RN-664 não serve aqui: ele tem referências cruzadas
         // apontando para indicadores inexistentes (ver RealDocumentCheckTests.DefeitosConhecidos),
         // e usá-lo faria este teste exigir que o validador ignorasse um defeito real.
         var (exitCode, saida) = RodarReview(ProfilePadrao(), "RN799RL6496600.docx");
@@ -86,7 +86,7 @@ public class CliExitCodeTests
     }
 
     private static (int ExitCode, string Saida) RodarReview(
-        string profilePath, string documento = "RN-816-RL-67456-00.docx")
+        string profilePath, string documento = "RN-664-RL-60947-02.docx")
     {
         var saida = Path.Combine(Path.GetTempPath(), $"cli-exit-{Guid.NewGuid():N}.docx");
         var cliDll = Path.Combine(AppContext.BaseDirectory, "Revisor.dll");

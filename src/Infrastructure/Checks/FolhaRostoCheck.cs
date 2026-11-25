@@ -88,7 +88,10 @@ public sealed class FolhaRostoCheck : IRuleCheck
 
             if (!string.IsNullOrWhiteSpace(pdaRx))
             {
-                if (Codificacao.Encontrar(folha, pdaRx) is null)
+                // A codificação no cabeçalho da primeira página também está na folha de rosto
+                // (modelo da Vale, em que a capa é a folha de revisões do cliente).
+                if (Codificacao.Encontrar(folha, pdaRx) is null
+                    && Codificacao.EncontrarEmQualquer(DocumentoTexto.CabecalhoDaFolhaDeRosto(ctx), pdaRx) is null)
                 {
                     violations.Add(new Violation(Ref.ToString(), Severity.Error,
                         $"Codificação (padrão {pdaRx}) não localizada na folha de rosto.",
@@ -110,7 +113,13 @@ public sealed class FolhaRostoCheck : IRuleCheck
                     "contendo: nome da empresa contratante / descrição do projeto, título do documento, " +
                     "data de emissão (mês/ano) e codificação. 'conforme' = true se TODOS os 4 elementos " +
                     "estão claramente presentes no texto.";
-                var verdict = await _semantic.EvaluateAsync(instrucao, folha, cancellationToken);
+                // O cabeçalho exibido na capa faz parte dela (modelo da Vale: título e
+                // codificações ficam ali).
+                var cabecalhoDaCapa = DocumentoTexto.CabecalhoDaFolhaDeRosto(ctx);
+                var conteudo = cabecalhoDaCapa.Count == 0
+                    ? folha
+                    : folha + "\n\nCabeçalho exibido na capa:\n" + string.Join("\n", cabecalhoDaCapa);
+                var verdict = await _semantic.EvaluateAsync(instrucao, conteudo, cancellationToken);
                 llmNote = $"LLM: {verdict.Justificativa}";
                 if (!verdict.Conforme)
                 {

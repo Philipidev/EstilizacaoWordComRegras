@@ -15,6 +15,19 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
 {
     private static readonly Regex InitialsToken = new(@"\b[A-Z]{2,5}\b", RegexOptions.Compiled);
 
+    // Na tabela de revisões da capa da Vale as iniciais às vezes vêm em minúsculas
+    // ("rbc/LPB/ABF"). Só valem como iniciais quando coladas a uma barra, para não tomar
+    // palavras comuns ("para", "de") por iniciais.
+    private static readonly Regex GrupoDeIniciais = new(@"\b[A-Za-z]{2,5}(?:\s?/\s?[A-Za-z]{2,5})+\b", RegexOptions.Compiled);
+
+    // Iniciais minúsculas de um grupo "rbc/LPB/ABF": só vale o grupo que tem ao menos uma
+    // inicial em maiúsculas, para "e/ou" e "ida/volta" não passarem por iniciais.
+    private static IEnumerable<string> IniciaisMinusculas(string texto) =>
+        GrupoDeIniciais.Matches(texto)
+            .Select(m => m.Value.Split('/').Select(t => t.Trim()).ToList())
+            .Where(grupo => grupo.Any(t => t.All(char.IsUpper)))
+            .SelectMany(grupo => grupo.Where(t => t.All(char.IsLower)));
+
     public ConsistenciaIniciaisCheck(ChecklistPadrao padrao = ChecklistPadrao.Cliente)
     {
         Ref = new ChecklistRef("PS-002", "4.3.3 (letra d)", padrao);
@@ -77,8 +90,8 @@ public sealed class ConsistenciaIniciaisCheck : IRuleCheck
 
         // Iniciais da folha de rosto: até o primeiro título, não um número fixo de parágrafos.
         var folhaTexto = string.Join(" ", DocumentoTexto.FolhaDeRosto(ctx.Structure).Select(p => p.Text));
-        var folhaInitials = InitialsToken.Matches(folhaTexto)
-            .Select(m => m.Value)
+        var folhaInitials = InitialsToken.Matches(folhaTexto).Select(m => m.Value)
+            .Concat(IniciaisMinusculas(folhaTexto))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         if (folhaInitials.Count == 0)

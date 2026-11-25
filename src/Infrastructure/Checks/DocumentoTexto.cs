@@ -1,3 +1,4 @@
+using WordComplianceValidator.Core.Checks;
 using WordComplianceValidator.Core.Models;
 
 namespace WordComplianceValidator.Infrastructure.Checks;
@@ -43,6 +44,29 @@ public static class DocumentoTexto
         }
         // Sem título nem índice o "fim da capa" não é observável: vale o limite.
         return lista.Take(Math.Max(1, limiteSemFronteira)).ToList();
+    }
+
+    /// <summary>
+    /// Texto do cabeçalho e do rodapé que contam como parte da folha de rosto.
+    /// <para>
+    /// Só entram quando são da capa de fato: o cabeçalho de "primeira página diferente" da
+    /// seção 0, ou — com <c>folhaRosto.cabecalhoFazParteDaCapa=true</c> no profile — o
+    /// cabeçalho exibido na capa. É o caso da Vale, em que a capa é a folha de revisões do
+    /// cliente e as codificações (Nº VALE e Nº da contratada) só aparecem no cabeçalho, que é
+    /// o mesmo das demais páginas. Sem o flag, um cabeçalho corrente com a codificação
+    /// esconderia uma capa sem codificação.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<string> CabecalhoDaFolhaDeRosto(DocumentContext ctx)
+    {
+        var doc = ctx.Structure;
+        if (doc.Sections.Count == 0) return Array.Empty<string>();
+        var capa = doc.Sections[0];
+        var permitido = capa.TitlePage
+            || string.Equals(ctx.Profile.Get("folhaRosto.cabecalhoFazParteDaCapa"), "true", StringComparison.OrdinalIgnoreCase);
+        return permitido
+            ? capa.FirstPageHeaderFooters.Select(h => h.Text).Where(t => !string.IsNullOrWhiteSpace(t)).ToList()
+            : Array.Empty<string>();
     }
 
     /// <summary>Títulos do documento (parágrafos com nível de outline e texto), em ordem.</summary>

@@ -1,0 +1,40 @@
+{
+  "cliente": "Vale",
+  "versao": "1.0",
+  "parameters": {
+    "logomarcas.minimo": "2",
+    "quadroCaracteristicas.aliases": "Características do Documento Principal|Características do Documento|Quadro de Características|Características",
+    "iniciais.rotuloElaborador": "Elaborado por|Emissor|Elaborador",
+    "iniciais.rotuloVerificador": "Verificado por|Verificador|Verificador Técnico|V. Técnico",
+    "iniciais.rotuloAprovador": "Aprovado por|Aprovador",
+    "codificacao.pdaRegex": "^[A-Z]{2}-\\d{3}-[A-Z]{2}-\\d{5}$",
+    "codificacao.clienteRegex": "^[A-Z]{2}-\\d{4}[A-Z]{2}-[A-Z]-\\d{5}$",
+    "codificacao.aliasesRotulo": "Codificação PdA|Codificação|Código do Documento|Documento|Código",
+    "revisao.aliasesRotulo": "Revisão|Rev.|Rev",
+    "quadro.camposObrigatorios": "Codificação|Título|Revisão|Data|Elaborado por|Verificado por|Aprovado por",
+    "quadro.aliases.Elaborado por": "Elaborado por|Elaborador|Emissor",
+    "quadro.aliases.Verificado por": "Verificado por|Verificador|Verificador Técnico|V. Técnico",
+    "quadro.aliases.Aprovado por": "Aprovado por|Aprovador",
+    "folhaRosto.paragrafosIniciais": "60",
+    "folhaRosto.contratante": "",
+    "folhaRosto.titulo": "",
+    "folhaRosto.cabecalhoFazParteDaCapa": "true",
+
+    "corpo.fonte": "Arial",
+    "corpo.tamanho": "12",
+    "corpo.toleranciaPercentual": "10",
+
+    "elementosGraficos.toleranciaPercentual": "20",
+
+    "numeracao.exigirDireita": "false",
+    "numeracao.permitirNaFolhaDeRosto": "true",
+
+    "tarja.comentariosCliente": "Emissão para Comentários do Cliente|Emissao para Comentarios do Cliente|Para Comentários do Cliente",
+    "tarja.naoValidoExecucao": "Não é Válido para Execução|Nao e Valido para Execucao|Não Válido para Execução",
+    "tarja.exigeNaoValidoExecucao": "false",
+
+    "painelNavegacao.comprimentoMaximoTitulo": "200",
+
+    "semantico.regrasHabilitadas": "PS-002:4.2:Cliente|PS-002:4.3.4.2:Pda|PS-002:4.3.4.5:Pda|PS-002:4.3.7:Pda|PS-002:4.3.7:Cliente|PS-002:4.3.9:Pda|PS-002:4.3.9:Cliente|PS-002:4.3.3 (letra e):Pda|PS-018:4.3:Pda|PS-018:4.3.2 (letra a):Pda|PS-018:4.4:Pda|PS-018:4.4:Cliente|PS-018:4.7:Pda|PS-018:4.8:Pda|PS-018:4.9:Pda|PS-018:4.9:Cliente|PS-024:4.3:Pda|PS-024:4.3:Cliente"
+  }
+}

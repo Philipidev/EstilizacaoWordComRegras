@@ -28,9 +28,33 @@ public sealed class FormatacaoCorpoCheck : IRuleCheck
 
     public ChecklistRef Ref { get; }
 
+    private static readonly System.Text.RegularExpressions.Regex Legenda = new(
+        @"^\s*(tabela|quadro|figura|foto|gr[áa]fico|desenho)\s*\d+",
+        System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // Entrada de sumário/lista: estilo de índice (TOC1, Sumrio1...) ou PAGEREF com tabulação
+    // antes do número. Um PAGEREF solto no meio de uma frase ("ver página 7") é corpo.
+    private static bool EntradaDeIndice(ExtractedParagraph p) =>
+        (p.StyleId ?? "").StartsWith("toc", StringComparison.OrdinalIgnoreCase)
+        || (p.StyleId ?? "").StartsWith("sum", StringComparison.OrdinalIgnoreCase)
+        || (p.FieldCodes.Any(c => c.Equals("PAGEREF", StringComparison.OrdinalIgnoreCase)) && p.Text.Contains('\t'));
+
+    // Legenda: campo SEQ (numeração automática de figura/tabela) ou estilo de legenda, com o
+    // texto começando por "Figura N"/"Tabela N". Frase de corpo que começa igual não tem SEQ.
+    private static bool EhLegenda(ExtractedParagraph p) =>
+        Legenda.IsMatch(p.Text)
+        && (p.FieldCodes.Any(c => c.Equals("SEQ", StringComparison.OrdinalIgnoreCase))
+            || (p.StyleId ?? "").Contains("legenda", StringComparison.OrdinalIgnoreCase)
+            || (p.StyleId ?? "").Contains("caption", StringComparison.OrdinalIgnoreCase));
+
     public Task<RuleCheckResult> RunAsync(DocumentContext ctx, CancellationToken cancellationToken = default)
     {
-        var corpo = DocumentoTexto.Corpo(ctx.Structure);
+        // Entradas do sumário e das listas de figuras/tabelas seguem o estilo do índice (no
+        // modelo da Vale, Calibri 11), e as legendas ("Figura 3.1 – ...", "Tabela 2 - ...")
+        // têm formatação própria: nenhuma das duas é texto de corpo.
+        var corpo = DocumentoTexto.Corpo(ctx.Structure)
+            .Where(p => !EntradaDeIndice(p) && !EhLegenda(p))
+            .ToList();
         if (corpo.Count == 0)
         {
             return Task.FromResult(new RuleCheckResult(Ref, CheckStatus.Skipped,

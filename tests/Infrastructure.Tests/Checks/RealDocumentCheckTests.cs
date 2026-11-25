@@ -26,7 +26,9 @@ public class RealDocumentCheckTests
 
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RD-276-RL-68014-01.docx")]   // Vale: capa = folha de revisões do cliente
+    [InlineData("RD-673-RL-65239-00.docx")]
+    [InlineData("RD-771-RL-67131-00.docx")]   // Vale: quadro principal + quadro dos apêndices
     [InlineData("RN-664-RL-60947-02.docx")]   // quadro no modelo antigo (uma tabela)
     [InlineData("RN-778-ET-67440-00.docx")]   // quadro no modelo novo FR-115-01 (duas tabelas)
     public async Task Implemented_checks_pass_for_reference_document(string fileName)
@@ -91,13 +93,9 @@ public class RealDocumentCheckTests
     /// de fato conformes. Cada entrada aqui é dívida do documento, não do validador, e precisa
     /// de um teste próprio que fixe o achado para que a exceção não vire um buraco silencioso.
     /// </para>
-    /// O RN-816 já constou aqui pela tarja de comentários "remanescente" — que está só em
-    /// cabeçalhos 'first'/'even' que o Word não exibe (ver
-    /// <see cref="Tarja_do_RN816_so_existe_em_cabecalho_que_o_Word_nao_exibe"/>).
     /// </summary>
     private static readonly HashSet<(string Arquivo, string Regra)> DefeitosConhecidos =
     [
-        ("RN-816-RL-67456-00.docx", "PS-002:4.3.3 (letra h):Cliente"),
         // RN-664: uma referência cruzada mostra "Erro! Fonte de referência não encontrada" e
         // 15 legendas (Figura 27, Tabelas 5 e 6…) não constam do índice.
         ("RN-664-RL-60947-02.docx", "PS-002:4.3.3 (letra h):Cliente"),
@@ -107,7 +105,13 @@ public class RealDocumentCheckTests
         // RN-778: o corpo chama o anexo de "ANEXO I", o quadro o lista como "ADENDO I"; e 8
         // legendas não constam do índice.
         ("RN-778-ET-67440-00.docx", "PS-002:4.3.8:Cliente"),
-        ("RN-778-ET-67440-00.docx", "PS-002:4.3.4.4:Pda")
+        ("RN-778-ET-67440-00.docx", "PS-002:4.3.4.4:Pda"),
+        // Vale: o sumário só traz os títulos, sem lista de figuras e tabelas.
+        ("RD-276-RL-68014-01.docx", "PS-002:4.3.4.4:Pda"),
+        ("RD-673-RL-65239-00.docx", "PS-002:4.3.4.4:Pda"),
+        ("RD-771-RL-67131-00.docx", "PS-002:4.3.4.4:Pda"),
+        // RD-673: "Metodologia FMEA aplicada ao HIRA" é nível 3 logo abaixo de um nível 1.
+        ("RD-673-RL-65239-00.docx", "PS-002:4.3.5.2:Cliente")
     ];
 
     /// <summary>
@@ -153,43 +157,31 @@ public class RealDocumentCheckTests
     }
 
     /// <summary>
-    /// O RN-816 tem quatro campos REF vazios — sem resultado, logo depois de referências
-    /// válidas a "Figura 77", "88", "91" e "92" — cujos indicadores de destino não existem em
-    /// parte nenhuma do pacote. Hoje não aparecem no texto; ao atualizar os campos, o Word
-    /// escreve "Erro! Indicador não definido" nesses pontos.
+    /// O RN-664 tem três referências cruzadas cujo indicador de destino não existe; o Word já
+    /// mostra "Erro! Fonte de referência não encontrada" nesses pontos.
     /// </summary>
     [Fact]
-    public async Task Referencias_cruzadas_quebradas_do_RN816_sao_detectadas()
+    public async Task Referencias_cruzadas_quebradas_do_RN664_sao_detectadas()
     {
-        var ctx = ReferenceDocumentContext("RN-816-RL-67456-00.docx");
+        var ctx = ReferenceDocumentContext("RN-664-RL-60947-02.docx");
 
         var result = await new ReferenciasCruzadasCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(CheckStatus.Failed);
-        ctx.Structure.BrokenReferences.Select(r => r.Bookmark).Should().BeEquivalentTo(
-            "_Ref223474267", "_Ref222749372", "_Ref222920728", "_Ref222920729");
-
-        // São campos REF vazios (begin/instr/end, sem resultado) logo depois de uma referência
-        // válida: invisíveis hoje, viram "Erro! Indicador não definido" ao atualizar os campos.
-        ctx.Structure.BrokenReferences.Should().OnlyContain(r => r.DisplayedText == null);
-        ctx.Structure.BrokenReferences.Should().Contain(r => r.TextBefore.EndsWith("A Figura 77"));
-
+        result.Violations.Should().NotBeEmpty();
         // A mensagem diz onde está o campo, não o nome interno do indicador.
-        result.Violations.Should().Contain(v => v.Message.Contains("logo depois de «A Figura 77»"));
         result.Violations.Should().NotContain(v => v.Message.Contains("_Ref"));
     }
 
     /// <summary>
-    /// O RN-816 (revisão 00) guarda a tarja "EMISSÃO PARA COMENTÁRIOS DO CLIENTE" nos
-    /// cabeçalhos de primeira página e de páginas pares de várias seções, mas nenhuma seção
-    /// ativa "primeira página diferente" e o documento não usa "pares e ímpares diferentes":
-    /// a tarja não aparece em página nenhuma. Isso era reprovado como erro — e o mesmo resíduo
-    /// alimentava quatro achados semânticos sobre "status de emissão incoerente".
+    /// O RD-771 (revisão 00) guarda a tarja "EMISSÃO PARA COMENTÁRIOS DO CLIENTE" no
+    /// cabeçalho de páginas pares da seção 2, mas o documento não usa "pares e ímpares
+    /// diferentes": a tarja não aparece em página nenhuma. É aviso de resíduo, não erro.
     /// </summary>
     [Fact]
-    public async Task Tarja_do_RN816_so_existe_em_cabecalho_que_o_Word_nao_exibe()
+    public async Task Tarja_do_RD771_so_existe_em_cabecalho_que_o_Word_nao_exibe()
     {
-        var ctx = ReferenceDocumentContext("RN-816-RL-67456-00.docx");
+        var ctx = ReferenceDocumentContext("RD-771-RL-67131-00.docx");
         var check = new TarjaEmissaoCheck(
             WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.1.2");
 
@@ -200,36 +192,91 @@ public class RealDocumentCheckTests
         aviso.Severity.Should().Be(Severity.Warning);
         aviso.Message.Should().Contain("não aparece").And.Contain("Comentários do Cliente");
 
-        ctx.Structure.Headers.Should().OnlyContain(h => h.Kind == "default",
-            "sem titlePg e sem evenAndOddHeaders só o cabeçalho padrão é exibido");
         ctx.Structure.HiddenHeaderFooters.Should().Contain(h =>
             DocumentoTexto.Normalizar(h.Text).Contains("emissao para comentarios do cliente"));
     }
 
     [Fact]
-    public async Task Revisao_vigente_do_RN816_e_a_ultima_do_historico()
+    public void Revisao_vigente_do_RD276_e_a_ultima_do_historico()
     {
-        var ctx = ReferenceDocumentContext("RN-816-RL-67456-00.docx");
+        var ctx = ReferenceDocumentContext("RD-276-RL-68014-01.docx");
         var quadro = QuadroCaracteristicas.Find(ctx.Structure, ["Características do Documento"]);
 
         quadro.Should().NotBeNull();
 
         var historico = QuadroCaracteristicas.HistoricoDeRevisoes(quadro!);
-        historico.Select(e => e.Revisao).Should().Equal("0A", "0B", "00");
+        historico.Select(e => e.Revisao).Last().Should().Be("01");
 
-        // O cabeçalho da grade de folhas comeca com "Rev." e devolvia "0B" a quem lesse a
-        // primeira linha rotulada — a revisao vigente e a ultima do historico.
-        QuadroCaracteristicas.RevisaoVigente(quadro!).Should().Be("00");
+        // O cabeçalho da grade de folhas começa com "Rev." e devolvia a revisão errada a quem
+        // lesse a primeira linha rotulada — a vigente é a última do histórico.
+        QuadroCaracteristicas.RevisaoVigente(quadro!).Should().Be("01");
+    }
+
+    /// <summary>
+    /// Modelo da Vale: a capa é a folha de revisões do cliente, com as codificações (Nº VALE e
+    /// Nº da contratada) no cabeçalho da primeira página, e o total de páginas é um PAGEREF
+    /// que, no RD-771, desconta o quadro principal e o "Quadro Características dos Apêndices".
+    /// </summary>
+    [Fact]
+    public async Task Modelo_Vale_le_codificacao_da_capa_e_desconta_os_dois_quadros()
+    {
+        var ctx = ReferenceDocumentContext("RD-771-RL-67131-00.docx");
+        var quadro = QuadroCaracteristicas.Find(ctx.Structure, ["Características do Documento"]);
+
+        QuadroCaracteristicas.PaginasDoQuadro(ctx.Structure, quadro!).Should().Be(2);
+
+        var paginacao = await new PaginacaoAtualizadaCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Cliente, "4.3.3 (letra f)")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
+        paginacao.Violations.Should().BeEmpty();
+        paginacao.Note.Should().Contain("Total fixo 17 confere");
+
+        var localizacao = await new LocalizacaoCodificacaoCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
+        localizacao.Violations.Should().NotContain(v => v.Message.Contains("folha de rosto"));
+
+        var cliente = await new CodificacaoClienteCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
+        cliente.Violations.Should().BeEmpty();
+
+        var numeracao = await new NumeracaoPaginasCheck(
+                WordComplianceValidator.Core.Checklist.ChecklistPadrao.Pda, "4.3.6.5")
+            .RunAsync(ctx, TestContext.Current.CancellationToken);
+        numeracao.Violations.Should().NotContain(v => v.Message.Contains("folha de rosto"));
+    }
+
+    /// <summary>
+    /// Na capa da Vale as iniciais vêm às vezes em minúsculas ("rbc/LPB/ABF"): ainda são as
+    /// mesmas iniciais do quadro.
+    /// </summary>
+    [Fact]
+    public async Task Iniciais_minusculas_da_capa_Vale_conferem_com_o_quadro()
+    {
+        var ctx = ReferenceDocumentContext("RD-673-RL-65239-00.docx");
+
+        var resultado = await new ConsistenciaIniciaisCheck().RunAsync(ctx, TestContext.Current.CancellationToken);
+
+        resultado.Violations.Should().BeEmpty();
     }
 
     private static DocumentContext ReferenceDocumentContext(string fileName)
     {
         var path = RepoFile("templates", fileName);
         var structure = new DocxStructureExtractor().ExtractFromFile(path);
-        var profile = new ClientProfile("MRN (exemplo)", "1.0", ProfileParameters);
+        // Documentos da Vale (RD-…) usam o profile real do repositório: o teste cobre também
+        // o que está cadastrado para a equipe.
+        var profile = fileName.StartsWith("RD-", StringComparison.Ordinal)
+            ? ProfileVale.Value
+            : new ClientProfile("MRN (exemplo)", "1.0", ProfileParameters);
 
         return new DocumentContext(path, structure, profile);
     }
+
+    private static readonly Lazy<ClientProfile> ProfileVale = new(() =>
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(RepoFile("profiles", "vale.json")));
+        var parametros = json.RootElement.GetProperty("parameters").EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
+        return new ClientProfile("Vale", "1.0", parametros);
+    });
 
     private static string RepoFile(params string[] parts)
     {

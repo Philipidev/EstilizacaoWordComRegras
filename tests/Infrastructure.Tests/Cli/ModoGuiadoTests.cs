@@ -35,7 +35,9 @@ public sealed class ModoGuiadoTests : IDisposable
             new Apresentacao(console),
             new ExecutorDeRevisao(new OpenAiSettings { ApiKey = "" }),   // sem IA: nada de rede
             LocalizadorDeRecursos.Checklist(),
-            LocalizadorDeRecursos.Profiles(),
+            // Um profile só: com mais de um, o modo guiado pergunta o cliente, e estes testes
+            // não tratam dessa pergunta.
+            LocalizadorDeRecursos.Profiles().Where(p => Path.GetFileName(p) == "exemplo.json").ToList(),
             _abertos.Add,
             _pastasAbertas.Add);
         return (modo, console);

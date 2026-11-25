@@ -409,13 +409,47 @@ public static class QuadroCaracteristicas
     /// </summary>
     public static int? PaginasDoQuadro(DocumentStructure doc, ExtractedTable quadro)
     {
-        var paragrafos = doc.Paragraphs.Where(p => quadro.Contem(p.TableIndex)).ToList();
-        if (paragrafos.Count == 0) return null;
+        var doQuadro = doc.Paragraphs.Select((p, i) => (p, i)).Where(x => quadro.Contem(x.p.TableIndex)).ToList();
+        if (doQuadro.Count == 0) return null;
+
+        // O modelo da Vale traz, depois do quadro do documento principal, um "Quadro
+        // Características dos Apêndices" (grade de folhas por apêndice). Também fica fora da
+        // numeração, então suas páginas contam junto: do início do quadro principal até o fim
+        // do último quadro de apêndices que vier depois dele.
+        var ultimaParte = quadro.Partes.Max();
+        var tabelasDeApendices = doc.Tables
+            .Where(t => t.Index > ultimaParte && EhQuadroDeApendices(t))
+            .Select(t => t.Index)
+            .ToHashSet();
+        // Só os quadros de apêndices colados ao principal: entre eles, apenas parágrafos
+        // vazios (a quebra de página que os separa). Texto de corpo no meio encerra o quadro.
+        var fim = doQuadro[^1].i;
+        for (var i = fim + 1; i < doc.Paragraphs.Count; i++)
+        {
+            var p = doc.Paragraphs[i];
+            if (p.TableIndex is { } t && (tabelasDeApendices.Contains(t) || quadro.Contem(t))) { fim = i; continue; }
+            if (p.TableIndex is null && string.IsNullOrWhiteSpace(p.Text)) continue;
+            break;
+        }
+
+        var paragrafos = doc.Paragraphs.Skip(doQuadro[0].i).Take(fim - doQuadro[0].i + 1).ToList();
 
         var quebras = paragrafos.Sum(p => p.RenderedPageBreaks);
         if (paragrafos[0].RenderedPageBreakAtStart && quebras > 0) quebras--;
-        return quebras + 1;
+
+        // Sem paginação gravada no trecho (o Word não regravou o layout ali), valem as quebras
+        // manuais de página entre o início e o fim do quadro. A quebra que ABRE o quadro (antes
+        // do texto do primeiro parágrafo) não conta: ela separa o quadro do corpo.
+        var explicitas = paragrafos.Take(paragrafos.Count - 1)
+            .Select((p, i) => i == 0 ? p.PageBreakAfterText : p.EndsWithPageBreak || p.PageBreakAfterText)
+            .Count(quebra => quebra);
+        return Math.Max(quebras, explicitas) + 1;
     }
+
+    private static bool EhQuadroDeApendices(ExtractedTable tabela) =>
+        DocumentoTexto.Normalizar(tabela.FirstRowText ?? "") is var titulo
+        && titulo.Contains("caracteristicas d")
+        && (titulo.Contains("apendice") || titulo.Contains("anexo"));
 
     public static IReadOnlyDictionary<string, string> FieldsByLabel(ExtractedTable table)
     {

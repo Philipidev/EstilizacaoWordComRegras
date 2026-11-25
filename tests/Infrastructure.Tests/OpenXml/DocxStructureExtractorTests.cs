@@ -19,7 +19,7 @@ public class DocxStructureExtractorTests
     /// </summary>
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-778-ET-67440-00.docx")]
     public void Alignment_is_the_raw_ooxml_value_never_the_enum_type_name(string fileName)
     {
         var s = Extract(fileName);
@@ -37,7 +37,7 @@ public class DocxStructureExtractorTests
 
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-778-ET-67440-00.docx")]
     public void Body_paragraphs_resolve_effective_font_through_style_chain(string fileName)
     {
         var s = Extract(fileName);
@@ -55,7 +55,7 @@ public class DocxStructureExtractorTests
 
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-778-ET-67440-00.docx")]
     public void Headings_expose_outline_levels_even_with_custom_style_names(string fileName)
     {
         var s = Extract(fileName);
@@ -74,7 +74,7 @@ public class DocxStructureExtractorTests
 
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-778-ET-67440-00.docx")]
     public void Paragraphs_are_bound_to_sections_and_tables(string fileName)
     {
         var s = Extract(fileName);
@@ -88,7 +88,7 @@ public class DocxStructureExtractorTests
 
     [Theory]
     [InlineData("RN799RL6496600.docx")]
-    [InlineData("RN-816-RL-67456-00.docx")]
+    [InlineData("RN-778-ET-67440-00.docx")]
     public void Headers_are_bound_to_the_section_that_references_them(string fileName)
     {
         var s = Extract(fileName);

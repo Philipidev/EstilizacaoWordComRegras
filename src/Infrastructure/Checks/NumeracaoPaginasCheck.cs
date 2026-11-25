@@ -73,7 +73,12 @@ public sealed class NumeracaoPaginasCheck : IRuleCheck
         // Só faz sentido quando a capa é uma seção própria: num documento de seção única a
         // seção 0 é o documento inteiro, e exigir ausência de numeração ali contradiz a
         // própria regra de que as páginas devem ser numeradas.
-        if (ctx.Structure.Sections.Count > 1)
+        // Modelo da Vale: a capa é a folha de revisões do cliente e já vem numerada ("PÁGINA
+        // 1/23") pelo próprio modelo do cliente; o profile libera com
+        // numeracao.permitirNaFolhaDeRosto=true.
+        var capaPodeSerNumerada = string.Equals(ctx.Profile.Get("numeracao.permitirNaFolhaDeRosto"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        if (ctx.Structure.Sections.Count > 1 && !capaPodeSerNumerada)
         {
             // A folha de rosto é a primeira página: o que conta é o cabeçalho/rodapé que o Word
             // exibe nela — o 'first' quando a seção tem "primeira página diferente", o 'default'

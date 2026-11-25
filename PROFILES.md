@@ -160,6 +160,7 @@ Decodificando: 2 letras + 1-3 dígitos + `-PDA-` + grupos numéricos +
 | `folhaRosto.paragrafosIniciais` | `60` | Quantos parágrafos do início do documento considerar como "folha de rosto" antes do primeiro heading. |
 | `folhaRosto.contratante` | (vazio) | Nome da empresa contratante a procurar literalmente na folha. |
 | `folhaRosto.titulo` | (vazio) | Título esperado do documento. |
+| `folhaRosto.cabecalhoFazParteDaCapa` | `false` | `true` lê o cabeçalho exibido na capa como parte da folha de rosto (codificação, título). Para clientes em que a capa é um formulário do cliente e as codificações só aparecem no cabeçalho — a Vale. Sem o flag, só conta o cabeçalho de "primeira página diferente". |
 
 Quando `folhaRosto.contratante` ou `folhaRosto.titulo` estão vazios, a regra
 pula essa verificação específica. Útil quando você quer manter o profile
@@ -218,6 +219,7 @@ ser resolvido são **ignorados**, não contados como divergentes.
 |---|---|---|
 | `elementosGraficos.toleranciaPercentual` | `20` | % de figuras não centralizadas ou de legendas mal posicionadas tolerado (`ElementosGraficosCheck`, PS-002:4.3.6.3/4.3.6.4). |
 | `numeracao.exigirDireita` | `false` | `true` exige que o cabeçalho com o campo `PAGE` tenha parágrafo alinhado à direita (`NumeracaoPaginasCheck`, PS-002:4.3.6.5). |
+| `numeracao.permitirNaFolhaDeRosto` | `false` | `true` aceita numeração na folha de rosto. Para clientes cujo modelo já numera a capa — a Vale, em que a capa é a folha de revisões do cliente ("PÁGINA 1/23"). |
 | `painelNavegacao.comprimentoMaximoTitulo` | `200` | Acima desse número de caracteres, um "título" é reportado como provável parágrafo de corpo marcado indevidamente (`PainelNavegacaoCheck`, PS-002:4.3.4.6/4.3.5.2). |
 
 > `numeracao.exigirDireita` fica `false` por padrão porque em vários clientes o número de
